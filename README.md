@@ -1,59 +1,51 @@
 # VoiceAgent Pocket
 
-A lightweight Manifest V3 Chrome extension that combines a configurable AI assistant with microphone input, browser speech playback, and a manual PocketWebTools voice-cloning handoff.
+A Manifest V3 Chrome extension that pairs an OpenRouter chat assistant with automatic text handoff to PocketWebTools' browser-based voice-cloning page.
 
 ## Features
 
-- Chat with an OpenRouter model using the Chat Completions API.
-- Configure your API key, model slug, and system behavior prompt.
-- Dictate messages with the browser's Web Speech API where supported.
-- Read assistant replies aloud with built-in browser speech synthesis.
-- Keep the current conversation in the popup and clear it when you want.
-- Copy the latest assistant response and open the PocketWebTools voice-cloning page.
+- Chat with an OpenRouter model; configure the API key, model slug, and system prompt.
+- Dictate prompts using the browser's Web Speech API where supported.
+- Automatically send each assistant reply to an open PocketWebTools voice-cloning tab.
+- Fill the voice-cloning text field, then trigger generation when the page's permission checkbox is checked.
+- Attempt to play generated audio automatically; browser autoplay policies may require pressing Play.
+- Optional browser-native speech as a fallback.
 
 ## Install locally
 
 1. Download or clone this repository.
-2. Open `chrome://extensions` in Chrome.
-3. Enable **Developer mode**.
-4. Select **Load unpacked** and choose the repository folder containing `manifest.json`.
-5. Open the extension and select the settings gear.
-6. Add your OpenRouter API key and save settings.
-7. Type a message or select **Talk** to dictate one.
+2. Open `chrome://extensions` in Chrome and enable **Developer mode**.
+3. Choose **Load unpacked** and select the folder containing `manifest.json`.
+4. Open VoiceAgent Pocket, open settings, enter your OpenRouter API key, and save.
+5. Click **Open voice setup**. On PocketWebTools, record or upload a clean 6–10 second reference sample of your own voice (or a voice you have explicit permission to clone).
+6. Confirm the site's permission checkbox. Keep the PocketWebTools voice-cloning tab open.
+7. Return to the extension and chat. Replies are sent to the open tab automatically.
 
-## OpenRouter setup
+The first model load may download a large local model and take a while. PocketWebTools reports that it processes the reference voice, text, and generated audio locally in the browser.
 
-Create an API key in your OpenRouter account, then paste it into the extension settings. The default model is `openai/gpt-4o-mini`; replace it with any model slug available to your account.
+## How the integration works
 
-Requests are sent to `https://openrouter.ai/api/v1/chat/completions`. See the [OpenRouter Chat Completions documentation](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request).
+There is no documented public API assumed by this project. Instead, the extension's content script communicates with the PocketWebTools page, fills its text field, and clicks **Generate speech** after the site's voice-permission checkbox is checked. The extension tries to play the resulting audio element, but browser autoplay policy or future changes to the site's UI may require manual interaction.
 
-## PocketWebTools handoff
+Keep the PocketWebTools tab open while chatting. If the page layout changes, automatic field detection may need updating. The voice sample is selected on PocketWebTools itself; the extension does not upload or store it.
 
-Select **Copy reply & open** after the assistant has answered. The extension copies the latest assistant text and opens [PocketWebTools voice cloning](https://pocketweb.tools/voice-cloning), where you can paste the text into the site's workflow.
+## OpenRouter
 
-**Important:** this is a manual handoff, not direct voice cloning. This project does not assume PocketWebTools offers a public API or automate its interface. The extension uses the browser's built-in speech synthesis for spoken replies; that voice is separate from any voice you may create on PocketWebTools.
+The default model is `openai/gpt-4o-mini`. Use a model slug available to your OpenRouter account. Requests are sent to `https://openrouter.ai/api/v1/chat/completions`.
 
-## Privacy and security
+## Privacy and safety
 
-- The API key is stored using `chrome.storage.local` in your browser profile. This is convenient local storage, **not** a secure secrets vault. Anyone with access to your browser profile may be able to access it.
-- Do not commit API keys, passwords, or private voice samples to this repository.
-- Chat messages are sent to the OpenRouter service and selected model provider when you submit them. Review the applicable provider privacy policies.
-- Speech recognition depends on browser support and may use browser/vendor services. Review your browser's privacy settings.
-- The extension requests storage and clipboard-write permissions and declares OpenRouter as a host permission.
+- The OpenRouter API key is stored in `chrome.storage.local`, not a secure secrets vault.
+- Chat prompts and replies are sent to OpenRouter and the selected model provider.
+- PocketWebTools says its voice sample, input text, and generated audio stay in the browser and are not uploaded.
+- The extension only uses the cloning page after the user opens it and provides their reference recording. Consent must be explicitly confirmed on the site.
+- Only clone your own voice or a voice you have explicit permission to use.
 
-## Current limitations
+## Files
 
-- The popup conversation is session-only; it is not saved as chat history after the popup is closed.
-- Microphone recognition requires browser support and may require permission.
-- The PocketWebTools integration opens the site and copies text; it does not upload audio, create a voice model, or perform cloning automatically.
-- Assistant answers can be incorrect. Verify important information.
-
-## Project files
-
-- `manifest.json` — extension manifest and permissions
-- `popup.html` — popup interface
-- `popup.css` — visual styles
-- `popup.js` — settings, chat requests, speech input/output, and cloning handoff
+- `manifest.json` — permissions and extension configuration
+- `popup.html`, `popup.css`, `popup.js` — assistant interface and chat workflow
+- `content.js` — integration with the open PocketWebTools voice-cloning page
 
 ## License
 

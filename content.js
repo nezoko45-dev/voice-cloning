@@ -71,7 +71,7 @@
   }
 
   function findNewAudio() {
-    const audios = [...document.querySelectorAll("audio")].filter(visible);
+    const audios = [...document.querySelectorAll("audio")];
     return audios.reverse().find((audio) => {
       const src = audio.currentSrc || audio.src;
       return !oldAudioElements.has(audio) || (src && !oldAudioSources.has(src));

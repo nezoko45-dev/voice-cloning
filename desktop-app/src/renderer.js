@@ -1,6 +1,10 @@
 const voiceSelect=document.getElementById("voiceSelect"),textInput=document.getElementById("textInput"),charCount=document.getElementById("charCount"),generateButton=document.getElementById("generateButton"),statusTitle=document.getElementById("statusTitle"),statusMessage=document.getElementById("statusMessage"),resultPanel=document.getElementById("resultPanel"),resultStatus=document.getElementById("resultStatus"),audioPlayer=document.getElementById("audioPlayer"),saveButton=document.getElementById("saveButton");
 const bridgeToken=document.getElementById("bridgeToken"),bridgeStatus=document.getElementById("bridgeStatus"),copyBridgeToken=document.getElementById("copyBridgeToken");
+const chooseOutputButton=document.getElementById("chooseOutputButton"),outputPathLabel=document.getElementById("outputPathLabel");
 let generatedPath=null;
+let selectedOutputPath=null;
+const defaultOutputPath="Documents\\Voice Studio\\voice-studio-output.wav";
+function displayOutputPath(path){outputPathLabel.textContent=path||defaultOutputPath;outputPathLabel.title=path||defaultOutputPath}
 function setStatus(title,message){statusTitle.textContent=title;statusMessage.textContent=message}
 window.voiceStudio.onProgress(message=>setStatus("Kokoro TTS",message));
 window.voiceStudio.onBridgeText(({text})=>{
@@ -20,15 +24,17 @@ generateButton.addEventListener("click",async()=>{
   try{
     generateButton.disabled=true;
     generateButton.textContent="Generating…";
-    setStatus("Preparing Kokoro","The first run downloads the local model. Your text is synthesized on this PC and saved to Documents\\Voice Studio\\voice-studio-output.wav.");
-    const result=await window.voiceStudio.generate({text,voice:voiceSelect.value});
+    setStatus("Preparing Kokoro","The first run downloads the local model. Your text is synthesized on this PC and saved to your selected WAV location.");
+    const result=await window.voiceStudio.generate({text,voice:voiceSelect.value,outputPath:selectedOutputPath||undefined});
     generatedPath=result.outputPath;
     audioPlayer.pause();
     audioPlayer.src=result.audioUrl;
     audioPlayer.load();
     resultPanel.hidden=false;
     resultStatus.textContent="Generated · "+result.voice;
-    setStatus("Speech generated","Kokoro spoke "+result.characters+" characters using "+result.voice+". Saved to Documents\\Voice Studio\\voice-studio-output.wav.");
+    displayOutputPath(result.outputPath);
+    selectedOutputPath=result.outputPath;
+    setStatus("Speech generated","Kokoro spoke "+result.characters+" characters using "+result.voice+". Saved to "+result.outputPath+".");
     audioPlayer.play().catch(()=>{});
   }catch(error){
     setStatus("Generation failed",error.message||"Kokoro could not generate speech. Check the status messages and internet connection for the first model download.");
@@ -37,9 +43,19 @@ generateButton.addEventListener("click",async()=>{
     generateButton.innerHTML="▶ &nbsp; Generate speech";
   }
 });
+chooseOutputButton.addEventListener("click",async()=>{
+  try{
+    const chosen=await window.voiceStudio.chooseOutput(selectedOutputPath||undefined);
+    if(!chosen)return;
+    selectedOutputPath=chosen;
+    displayOutputPath(chosen);
+    setStatus("Output location selected","New speech will be saved to "+chosen+".");
+  }catch(error){setStatus("Could not select output location",error.message||"Please try again.")}
+});
 saveButton.addEventListener("click",async()=>{if(!generatedPath)return;await window.voiceStudio.showOutput(generatedPath)});
 copyBridgeToken.addEventListener("click",async()=>{try{await window.voiceStudio.copyBridgeToken();copyBridgeToken.textContent="Copied";setTimeout(()=>copyBridgeToken.textContent="Copy token",1400)}catch{bridgeStatus.textContent="Could not copy token. Select and copy it manually."}});
 (async()=>{
+  displayOutputPath(selectedOutputPath);
   try{const info=await window.voiceStudio.getBridgeInfo();bridgeToken.value=info.token;bridgeStatus.textContent="Running at http://"+info.host+":"+info.port+" while Voice Studio is open."}catch{bridgeStatus.textContent="Local extension bridge status unavailable."}
   try{const engine=await window.voiceStudio.getEngineStatus();if(engine.ready)setStatus("Kokoro ready",""+engine.version+" is loaded. Your model is cached locally.");else setStatus("Ready for Kokoro setup",engine.message)}catch{setStatus("Local engine status unavailable","Close and reopen the app, then check the runtime files.")}
 })();

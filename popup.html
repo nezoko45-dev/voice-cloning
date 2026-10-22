@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VoiceAgent Pocket</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">VOICEAGENT POCKET</p>
+        <h1>Your voice, your assistant.</h1>
+      </div>
+      <button id="settingsToggle" class="icon-button" title="Settings" aria-label="Settings">⚙</button>
+    </header>
+
+    <section id="settingsPanel" class="panel settings" hidden>
+      <h2>Assistant settings</h2>
+      <label for="apiKey">OpenRouter API key</label>
+      <input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-…">
+      <p class="hint">Stored locally in this browser profile. It is not a secure vault; don't share this browser profile.</p>
+      <label for="model">Model</label>
+      <input id="model" type="text" value="openai/gpt-4o-mini" spellcheck="false">
+      <label for="systemPrompt">Behavior prompt</label>
+      <textarea id="systemPrompt" rows="4">You are a natural, friendly voice assistant. Be concise when speaking, follow my instructions, ask clarifying questions when needed, and never pretend to have performed actions you have not performed.</textarea>
+      <div class="setting-row">
+        <label class="check-label"><input id="autoSpeak" type="checkbox" checked> Speak replies aloud</label>
+      </div>
+      <button id="saveSettings" class="primary">Save settings</button>
+      <p id="settingsStatus" class="status" role="status"></p>
+    </section>
+
+    <section class="chat-panel" aria-label="Conversation">
+      <div id="messages" class="messages" aria-live="polite">
+        <div class="welcome">
+          <div class="wave">〰</div>
+          <h2>Ready when you are.</h2>
+          <p>Type a message or use the microphone to talk.</p>
+        </div>
+      </div>
+      <p id="status" class="status" role="status">Add your OpenRouter key in settings to get started.</p>
+      <form id="chatForm" class="composer">
+        <textarea id="userInput" rows="2" placeholder="Ask me anything…" aria-label="Message" required></textarea>
+        <div class="composer-actions">
+          <button id="micButton" class="secondary" type="button" title="Use microphone">🎙 Talk</button>
+          <span class="spacer"></span>
+          <button id="clearButton" class="text-button" type="button">Clear</button>
+          <button id="sendButton" class="primary" type="submit">Send ↗</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="handoff">
+      <div>
+        <h2>Voice cloning handoff</h2>
+        <p>Copy the latest assistant reply, then open PocketWebTools to use it with your voice workflow.</p>
+      </div>
+      <button id="cloneButton" class="secondary" type="button">Copy reply &amp; open ↗</button>
+      <p id="cloneStatus" class="status" role="status"></p>
+    </section>
+
+    <footer>AI responses can be wrong. Review important information before acting.</footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

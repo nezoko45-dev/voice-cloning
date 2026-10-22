@@ -1,24 +1,25 @@
 # Voice Studio — Windows desktop
 
-A local-first Electron desktop app for reference-audio voice cloning and text-to-speech. The existing Chrome extension is unchanged.
+A local-first Electron desktop app for Kokoro text-to-speech. The existing Chrome extension and its localhost text bridge are preserved.
 
 ## Engine
 
-Uses the native Windows Pocket TTS command-line release from Kyutai's official repository, pinned to `v4.0.1`. The engine is downloaded from the official GitHub Releases API on first generation; no Python or PyTorch is installed. The engine uses CPU inference. WebGPU is not needed or claimed.
+Uses Kokoro 82M through Hugging Face Transformers.js and ONNX Runtime. No Python, PyTorch, or separate runtime installer is required. The first generation downloads the quantized model to the app's user-data cache; later generations run locally.
 
-Official project: https://github.com/kyutai-labs/pocket-tts
-CLI reference: https://github.com/kyutai-labs/pocket-tts/blob/main/docs/CLI%20Commands/generate.md
+Model: https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX
+Runtime: https://github.com/huggingface/transformers.js
+
+Kokoro provides preset voices and does **not** clone a speaker from a WAV reference recording. Voice Studio offers selectable English voices including US and British English options.
 
 ## Current functionality
 
-- Select a reference recording in common audio/video formats.
-- FFmpeg normalizes the chosen file to mono 24 kHz PCM WAV before voice conditioning.
-- Enter text and generate speech with Pocket TTS.
-- Generated speech is automatically converted to mono 24 kHz, 16-bit PCM WAV and saved as `Documents\\Voice Studio\\voice-studio-output.wav` (overwrites the previous output on each generation). No output-file picker is needed.
+- Type text or send it from the existing Chrome extension into the editor for review.
+- Select a built-in Kokoro voice.
+- Synthesize text locally in chunks to handle longer passages.
+- Write standard mono, 16-bit PCM WAV output to `Documents\\Voice Studio\\voice-studio-output.wav`, replacing the previous output on each generation.
 - Preview the output WAV and open its location.
-- First run downloads the native engine; first synthesis downloads the model weights.
-- Engine and model cache live in the app's user-data directory. Subsequent generation is local; the app does not send text or reference audio to a cloud service.
-- No Python setup for end users.
+- First generation downloads the ONNX model files; subsequent generations use the local cache.
+- No Python setup for end users. Text synthesis runs on the PC; the first model download requires internet access.
 
 ## Build
 
@@ -37,7 +38,7 @@ npm install
 npm run dist:win
 ```
 
-The installer is written to `release/Voice-Studio-Setup-0.2.0.exe`.
+The installer is written to `release/Voice-Studio-Setup-0.2.0.exe`. Rebuild the Windows installer after source or dependency changes.
 
 
 ## Chrome extension bridge
@@ -64,9 +65,9 @@ The bridge token is saved in the app's user-data directory and persists across l
 - Voice Studio must be running and its window open. If it is closed, the extension cannot deliver text.
 - The bridge is an additional feature; the extension's existing OpenRouter chat behavior remains unchanged.
 
-### Troubleshooting: FFmpeg `ENOENT` after installation
+### Troubleshooting: model download or generation fails
 
-If generation fails with a path ending in `resources\\app.asar\\node_modules\\ffmpeg-static\\ffmpeg.exe`, you are running a build that tries to launch FFmpeg from inside the ASAR archive. Install a newer build that unpacks `node_modules/ffmpeg-static/**` and resolves the executable from `resources\\app.asar.unpacked\\node_modules\\ffmpeg-static\\ffmpeg.exe`. Rebuild the Windows installer after changing packaging configuration; restarting the same old installer does not repair missing packaged files.
+The first generation needs internet access to download the Kokoro ONNX model. If it fails, copy the complete error shown in the status area. Confirm the PC can reach Hugging Face and that the app has write access to its user-data cache. Restarting an older installer does not include new code; rebuild and reinstall after updating the branch.
 
 ### Bridge smoke tests
 
@@ -79,27 +80,24 @@ If generation fails with a path ending in `resources\\app.asar\\node_modules\\ff
 
 ## First launch
 
-The first generation requires an internet connection to download the official native runtime and Pocket TTS model. After the model has been cached, speech generation can run offline. If the model is not already cached and the computer is offline, generation will fail with a download error.
+The first generation requires internet access to download the Kokoro model from Hugging Face. After the model files have been cached, synthesis can run offline. The output is saved locally.
 
 ## Known limitations / before release
 
-- Pocket TTS is CPU-only in its native standalone runtime; it does not use WebGPU.
-- The first run's model download progress is shown as engine log messages, not a byte-accurate progress bar.
-- The current model preset is English. Pocket TTS supports additional languages with their respective model configurations.
-- Import filters list common media formats; FFmpeg must be able to decode the actual codec/container.
-- This source has not been built or end-to-end tested on Windows in this environment. Verify the official release archive's Windows asset naming and run the smoke tests below before distributing.
-- The app downloads and runs a native executable. It is pinned to an official release and verifies GitHub's SHA-256 asset digest when the release API provides one.
+- Kokoro uses preset voices and does not clone from reference audio.
+- The first model download can take time; progress messages appear in the status area.
+- This source has not yet been built or end-to-end tested on Windows in this environment. Run the smoke tests below before distributing.
 
 ## Smoke test checklist
 
 1. Build and launch on Windows 10/11 x64.
-2. Click Generate with a clean WAV reference; verify engine install and model download.
-3. Generate output, listen, and confirm a valid PCM WAV is created.
-4. Repeat with M4A, FLAC and MP3 references.
+2. Select a Kokoro voice and generate a short sentence; verify the model downloads.
+3. Generate a longer paragraph, listen, and confirm a valid PCM WAV is created.
+4. Try several voices and confirm the selected voice is reflected in the result status.
 5. Disconnect the network after the first successful generation and verify another generation succeeds.
-6. Confirm the app makes no network requests during cached generation.
+6. Confirm cached generation does not need network access.
 7. Review upstream model license and prohibited-use rules before redistribution.
 
 ## Privacy and consent
 
-Text, reference audio and generated speech are passed only to the local executable. Network is used to download the pinned runtime and model files. Only clone voices you own or have explicit, lawful permission to use; do not use generated audio to impersonate someone or deceive others.
+Text is synthesized locally. Network is used to download model files on first run. Do not use generated audio to impersonate someone or deceive others.

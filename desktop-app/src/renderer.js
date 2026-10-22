@@ -1,7 +1,7 @@
 const voiceSelect=document.getElementById("voiceSelect"),textInput=document.getElementById("textInput"),charCount=document.getElementById("charCount"),generateButton=document.getElementById("generateButton"),statusTitle=document.getElementById("statusTitle"),statusMessage=document.getElementById("statusMessage"),resultPanel=document.getElementById("resultPanel"),resultStatus=document.getElementById("resultStatus"),audioPlayer=document.getElementById("audioPlayer"),saveButton=document.getElementById("saveButton");
 const bridgeToken=document.getElementById("bridgeToken"),bridgeStatus=document.getElementById("bridgeStatus"),copyBridgeToken=document.getElementById("copyBridgeToken");
 const chooseOutputButton=document.getElementById("chooseOutputButton"),outputPathLabel=document.getElementById("outputPathLabel");
-const startListeningButton=document.getElementById("startListeningButton"),stopListeningButton=document.getElementById("stopListeningButton"),silenceSelect=document.getElementById("silenceSelect"),autoGenerateCheckbox=document.getElementById("autoGenerateCheckbox"),repeatListeningCheckbox=document.getElementById("repeatListeningCheckbox");
+const startListeningButton=document.getElementById("startListeningButton"),stopListeningButton=document.getElementById("stopListeningButton"),silenceSelect=document.getElementById("silenceSelect"),autoGenerateCheckbox=document.getElementById("autoGenerateCheckbox"),repeatListeningCheckbox=document.getElementById("repeatListeningCheckbox"),outputDeviceSelect=document.getElementById("outputDeviceSelect"),refreshOutputDevicesButton=document.getElementById("refreshOutputDevicesButton");
 let mediaStream=null,mediaRecorder=null,recordingChunks=[],audioContext=null,analyserFrame=0,lastVoiceAt=0,heardVoice=false,stopRequested=false;
 let generatedPath=null;
 let selectedOutputPath=null;
@@ -18,6 +18,56 @@ window.voiceStudio.onBridgeText(({text})=>{
   setStatus("Text received from Chrome","Review the imported text, choose a Kokoro voice, then click Generate speech.");
 });
 textInput.addEventListener("input",()=>{charCount.textContent=textInput.value.length.toLocaleString()+" characters"});
+
+async function refreshOutputDevices(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.enumerateDevices){
+    outputDeviceSelect.innerHTML='<option value="">System default (device selection unavailable)</option>';
+    outputDeviceSelect.disabled=true;
+    return;
+  }
+  const previous=outputDeviceSelect.value;
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const outputs=devices.filter(device=>device.kind==="audiooutput");
+    outputDeviceSelect.replaceChildren();
+    const defaultOption=document.createElement("option");
+    defaultOption.value="";
+    defaultOption.textContent="System default";
+    outputDeviceSelect.appendChild(defaultOption);
+    outputs.forEach((device,index)=>{
+      const option=document.createElement("option");
+      option.value=device.deviceId;
+      option.textContent=device.label||("Audio output "+(index+1));
+      outputDeviceSelect.appendChild(option);
+    });
+    if([...outputDeviceSelect.options].some(option=>option.value===previous))outputDeviceSelect.value=previous;
+    outputDeviceSelect.disabled=outputs.length===0;
+  }catch(error){
+    outputDeviceSelect.innerHTML='<option value="">System default (could not list devices)</option>';
+    outputDeviceSelect.disabled=true;
+    setStatus("Audio devices unavailable",error.message||"Could not list playback devices.");
+  }
+}
+async function applyOutputDevice(){
+  if(typeof audioPlayer.setSinkId!=="function"){
+    setStatus("Output device selection unavailable","This version of the desktop runtime does not support choosing a playback device. Use the Windows system output selector.");
+    return;
+  }
+  try{
+    await audioPlayer.setSinkId(outputDeviceSelect.value);
+    const chosen=outputDeviceSelect.selectedOptions[0]?.textContent||"System default";
+    setStatus("Playback device selected","Generated audio will play through "+chosen+".");
+  }catch(error){
+    setStatus("Could not select playback device",error.message||"Choose another output device or use the Windows system default.");
+    await refreshOutputDevices();
+  }
+}
+outputDeviceSelect.addEventListener("change",applyOutputDevice);
+refreshOutputDevicesButton.addEventListener("click",refreshOutputDevices);
+if(navigator.mediaDevices&&navigator.mediaDevices.addEventListener){
+  navigator.mediaDevices.addEventListener("devicechange",refreshOutputDevices);
+}
+
 function setListeningUi(listening){
   startListeningButton.disabled=listening;
   stopListeningButton.disabled=!listening;
@@ -126,6 +176,7 @@ generateButton.addEventListener("click",async()=>{
     audioPlayer.pause();
     audioPlayer.src=result.audioUrl;
     audioPlayer.load();
+    if(typeof audioPlayer.setSinkId==="function")await audioPlayer.setSinkId(outputDeviceSelect.value);
     resultPanel.hidden=false;
     resultStatus.textContent="Generated · "+result.voice;
     displayOutputPath(result.outputPath);
@@ -156,6 +207,7 @@ saveButton.addEventListener("click",async()=>{if(!generatedPath)return;await win
 copyBridgeToken.addEventListener("click",async()=>{try{await window.voiceStudio.copyBridgeToken();copyBridgeToken.textContent="Copied";setTimeout(()=>copyBridgeToken.textContent="Copy token",1400)}catch{bridgeStatus.textContent="Could not copy token. Select and copy it manually."}});
 (async()=>{
   displayOutputPath(selectedOutputPath);
+  await refreshOutputDevices();
   try{const info=await window.voiceStudio.getBridgeInfo();bridgeToken.value=info.token;bridgeStatus.textContent="Running at http://"+info.host+":"+info.port+" while Voice Studio is open."}catch{bridgeStatus.textContent="Local extension bridge status unavailable."}
   try{const engine=await window.voiceStudio.getEngineStatus();if(engine.ready)setStatus("Kokoro ready",""+engine.version+" is loaded. Your model is cached locally.");else setStatus("Ready for Kokoro setup",engine.message)}catch{setStatus("Local engine status unavailable","Close and reopen the app, then check the runtime files.")}
 })();

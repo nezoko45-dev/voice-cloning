@@ -1,0 +1,50 @@
+name: Voice Studio Windows build
+
+on:
+  push:
+    branches:
+      - feature/windows-voice-studio
+    paths:
+      - "desktop-app/**"
+      - "manifest.json"
+      - "popup.js"
+      - "popup.html"
+      - "popup.css"
+      - "background.js"
+      - ".github/workflows/voice-studio-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop-app
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install
+      - name: Check JavaScript syntax
+        run: |
+          node --check src/main.js
+          node --check src/preload.js
+          node --check src/renderer.js
+          node --check ../popup.js
+          node --check ../background.js
+      - name: Package Windows installer
+        run: npm run dist:win
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Voice-Studio-Windows-Installer
+          path: desktop-app/release/Voice-Studio-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 14

@@ -11,8 +11,9 @@
   ],
   "host_permissions": [
     "https://openrouter.ai/*",
-    "http://127.0.0.1/*",
-    "http://localhost/*"
+    "http://127.0.0.1:47831/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "action": {
     "default_title": "VoiceAgent Pocket",

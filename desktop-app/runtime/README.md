@@ -1,0 +1,1 @@
+This folder is reserved for the compatible Windows x64 voice-engine.exe and any required redistributable runtime libraries. No engine binary is included yet. The final engine must implement the command-line contract documented in ../README.md and be verified for offline inference.

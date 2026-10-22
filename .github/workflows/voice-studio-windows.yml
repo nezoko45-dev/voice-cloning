@@ -6,6 +6,11 @@ on:
       - feature/windows-voice-studio
     paths:
       - "desktop-app/**"
+      - "manifest.json"
+      - "popup.js"
+      - "popup.html"
+      - "popup.css"
+      - "background.js"
       - ".github/workflows/voice-studio-windows.yml"
   workflow_dispatch:
 
@@ -32,6 +37,8 @@ jobs:
           node --check src/main.js
           node --check src/preload.js
           node --check src/renderer.js
+          node --check ../popup.js
+          node --check ../background.js
       - name: Package Windows installer
         run: npm run dist:win
       - name: Upload installer

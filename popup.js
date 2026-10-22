@@ -200,14 +200,14 @@ function beginRecognition() {
   recognition.onerror = (event) => {
     hadError = true;
     setStatus(els.status, "Microphone error: " + event.error, true);
-    if (["not-allowed", "service-not-allowed", "audio-capture"].includes(event.error)) continuousListening = false;
+    if (["not-allowed", "service-not-allowed", "audio-capture", "network"].includes(event.error)) continuousListening = false;
   };
   recognition.onend = () => {
     listening = false;
     const text = finalTranscript.trim();
     if (text && continuousListening) {
       sendMessage(text);
-    } else if (continuousListening && !busy && !hadError) {
+    } else if (continuousListening && !busy) {
       window.setTimeout(beginRecognition, 350);
     } else if (!continuousListening) {
       els.micButton.textContent = "🎙 Talk";

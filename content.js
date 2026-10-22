@@ -94,8 +94,11 @@
     const isPlay = (button) => !button.disabled &&
       /(^|\b)(play|play audio|play voice)(\b|$)|▶/.test(label(button)) &&
       !/generate speech|preview|playground/i.test(label(button));
-    const candidates = [...localButtons.filter(isPlay), ...allButtons.filter(isPlay)];
-    const playButton = candidates.find((button) => !button.getAttribute("aria-pressed") || button.getAttribute("aria-pressed") !== "true");
+    // Result cards are appended as generation completes, so the newest visible
+    // Play control is usually the control belonging to the latest generated sentence.
+    const candidates = [...allButtons].reverse().filter(isPlay);
+    const playButton = candidates.find((button) => button.getAttribute("aria-pressed") !== "true") ||
+      [...localButtons].reverse().find(isPlay);
     if (playButton) {
       playButton.click();
       return true;

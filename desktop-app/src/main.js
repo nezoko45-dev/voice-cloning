@@ -197,11 +197,26 @@ async function installEngine() {
   })();
   try { return await installPromise; } finally { installPromise = null; }
 }
+async function resolveFfmpegExecutable() {
+  if (!ffmpegPath) throw new Error("The bundled FFmpeg converter is missing. Reinstall Voice Studio using the latest Windows installer.");
+  // Native executables cannot be launched from inside Electron's ASAR archive.
+  // electron-builder places asarUnpack files beside app.asar in app.asar.unpacked.
+  const candidates = [];
+  if (app.isPackaged) candidates.push(ffmpegPath.replace(/app\.asar([\\/])/i, "app.asar.unpacked$1"));
+  candidates.push(ffmpegPath);
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {}
+  }
+  throw new Error("FFmpeg was not found in the installed app. Please reinstall the latest Voice Studio installer. Expected an executable under resources\\app.asar.unpacked\\node_modules\\ffmpeg-static.");
+}
 async function normalizeAudio(inputPath) {
-  if (!ffmpegPath) throw new Error("The bundled FFmpeg converter is missing from this build.");
+  const executable = await resolveFfmpegExecutable();
   await fs.mkdir(workDir(), { recursive: true });
   const outputPath = path.join(workDir(), `reference-${Date.now()}.wav`);
-  await runProcess(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", outputPath]);
+  await runProcess(executable, ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", outputPath]);
   return outputPath;
 }
 app.whenReady().then(async () => {

@@ -7,6 +7,7 @@
   let pageObserver = null;
   let generationStartedAt = 0;
   let oldAudioSources = new Set();
+  let oldAudioElements = new Set();
 
   const visible = (el) => !!(el && el.getClientRects().length);
   const normalized = (s) => (s || "").replace(/\s+/g, " ").trim().toLowerCase();
@@ -73,8 +74,8 @@
     const audios = [...document.querySelectorAll("audio")].filter(visible);
     return audios.reverse().find((audio) => {
       const src = audio.currentSrc || audio.src;
-      return src && (!oldAudioSources.has(src) || audio.readyState >= 2);
-    }) || audios[audios.length - 1] || null;
+      return !oldAudioElements.has(audio) || (src && !oldAudioSources.has(src));
+    }) || null;
   }
 
   function clickResultPlay(audio) {
@@ -161,6 +162,7 @@
     currentSentence = sentenceQueue.shift();
     setFieldValue(field, currentSentence);
     oldAudioSources = audioSources();
+    oldAudioElements = new Set([...document.querySelectorAll("audio")]);
     generationStartedAt = Date.now();
     busy = true;
     setStatus("Pasting sentence and generating cloned speech (" + (sentenceQueue.length + 1) + " sentence(s) remaining)…");

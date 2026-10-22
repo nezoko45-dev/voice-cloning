@@ -30,6 +30,14 @@
       <input id="ttsReferenceId" type="text" placeholder="my-speaker" spellcheck="false">
       <label for="ttsApiKey">Local server API token (optional)</label>
       <input id="ttsApiKey" type="password" autocomplete="off" placeholder="Only if your local server requires it">
+      <hr>
+      <h3>Voice Studio bridge</h3>
+      <p class="hint">Open Voice Studio, copy its bridge token, and paste it here. Text is imported for review; speech generation never starts automatically.</p>
+      <label for="voiceStudioToken">Voice Studio bridge token</label>
+      <input id="voiceStudioToken" type="password" autocomplete="off" spellcheck="false" placeholder="Paste token from Voice Studio">
+      <label for="voiceStudioEndpoint">Bridge URL</label>
+      <input id="voiceStudioEndpoint" type="url" value="http://127.0.0.1:47831/api/text" spellcheck="false">
+      <button id="testVoiceStudio" class="secondary" type="button">Test connection</button>
       <button id="saveSettings" class="primary">Save settings</button>
       <p id="settingsStatus" class="status" role="status"></p>
     </section>
@@ -40,6 +48,7 @@
         <textarea id="userInput" rows="2" placeholder="Ask me anything…" aria-label="Message" required></textarea>
         <div class="composer-actions">
           <button id="micButton" class="secondary" type="button" title="Start or stop background microphone listening">🎙 Talk</button>
+          <button id="sendToVoiceStudio" class="secondary" type="button" title="Send text to Voice Studio for review">To Studio ↗</button>
           <span class="spacer"></span><button id="clearButton" class="text-button" type="button">Clear</button>
           <button id="sendButton" class="primary" type="submit">Send ↗</button>
         </div>

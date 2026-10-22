@@ -205,9 +205,10 @@ app.whenReady().then(async () => {
     const filePath = result.filePaths[0], stat = await fs.stat(filePath);
     return { path: filePath, name: path.basename(filePath), size: stat.size };
   });
-  ipcMain.handle("audio:choose-output", async () => {
+  ipcMain.handle("audio:choose-output", async (_event, currentPath) => {
+    const defaultPath = typeof currentPath === "string" && path.isAbsolute(currentPath) ? currentPath : path.join(app.getPath("documents"), "Voice Studio", "voice-studio-output.wav");
     const result = await dialog.showSaveDialog(mainWindow, {
-      title: "Save generated speech", defaultPath: "voice-studio-output.wav",
+      title: "Choose output audio file", defaultPath,
       filters: [{ name: "WAV audio", extensions: ["wav"] }]
     });
     return result.canceled ? null : result.filePath;
@@ -230,7 +231,10 @@ app.whenReady().then(async () => {
     const chunks = splitTextIntoChunks(text);
     const outputDir = path.join(app.getPath("documents"), "Voice Studio");
     await fs.mkdir(outputDir, { recursive: true });
-    const outputPath = path.join(outputDir, "voice-studio-output.wav");
+    const requestedOutputPath = typeof request.outputPath === "string" ? request.outputPath.trim() : "";
+    const outputPath = requestedOutputPath || path.join(outputDir, "voice-studio-output.wav");
+    if (!path.isAbsolute(outputPath) || path.extname(outputPath).toLowerCase() !== ".wav") throw new Error("Choose a valid absolute output path ending in .wav.");
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
     const tts = await getKokoroPipeline();
     const generatedChunks = [];
     let sampleRate = 24000;

@@ -146,8 +146,10 @@ async function getKokoroPipeline() {
     transformers.env.cacheDir = modelCache;
     transformers.env.allowRemoteModels = true;
     transformers.env.useBrowserCache = false;
-    const tts = await transformers.pipeline("text-to-speech", KOKORO_MODEL, {
+    const { KokoroTTS } = await import("kokoro-js");
+    const tts = await KokoroTTS.from_pretrained(KOKORO_MODEL, {
       dtype: "q8",
+      device: "cpu",
       progress_callback: event => {
         if (!event || typeof event.status !== "string") return;
         if (event.status === "progress" && Number.isFinite(event.progress)) {
@@ -234,7 +236,7 @@ app.whenReady().then(async () => {
     let sampleRate = 24000;
     for (let i = 0; i < chunks.length; i++) {
       sendProgress("Kokoro is generating text chunk " + (i + 1) + " of " + chunks.length + " using voice " + voice + "…");
-      const result = await tts(chunks[i], { voice });
+      const result = await tts.generate(chunks[i], { voice });
       if (!result || !result.audio || !result.audio.length) throw new Error("Kokoro returned no audio for text chunk " + (i + 1) + ". Please try a shorter sentence.");
       if (Number.isFinite(result.sampling_rate)) sampleRate = result.sampling_rate;
       generatedChunks.push(Float32Array.from(result.audio));

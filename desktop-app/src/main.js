@@ -1,7 +1,8 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, clipboard } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const crypto = require("node:crypto");
+const http = require("node:http");
 const { spawn } = require("node:child_process");
 const { pipeline } = require("node:stream/promises");
 const { Readable } = require("node:stream");
@@ -11,14 +12,97 @@ const ffmpegPath = require("ffmpeg-static");
 
 const ENGINE_REPO = "kyutai-labs/pocket-tts";
 const ENGINE_TAG = "v4.0.1";
+const BRIDGE_HOST = "127.0.0.1";
+const BRIDGE_PORT = 47831;
+const MAX_BRIDGE_BODY = 24 * 1024;
+const EXTENSION_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
 let mainWindow;
 let installPromise = null;
+let bridgeServer = null;
+let bridgeToken = null;
 
 function runtimeDir() { return path.join(app.getPath("userData"), "runtime"); }
 function workDir() { return path.join(app.getPath("userData"), "work"); }
 function cacheDir() { return path.join(app.getPath("userData"), "model-cache"); }
 function sendProgress(message) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("runtime:progress", message);
+}
+function sendBridgeText(text) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("bridge:text", { text });
+}
+async function loadBridgeToken() {
+  const tokenPath = path.join(app.getPath("userData"), "bridge-token.txt");
+  try {
+    const existing = (await fs.readFile(tokenPath, "utf8")).trim();
+    if (/^[a-f0-9]{64}$/.test(existing)) return existing;
+  } catch {}
+  const token = crypto.randomBytes(32).toString("hex");
+  await fs.mkdir(path.dirname(tokenPath), { recursive: true });
+  await fs.writeFile(tokenPath, token, { encoding: "utf8", mode: 0o600 });
+  return token;
+}
+function replyJson(res, status, body, origin = "") {
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    ...(origin ? { "Access-Control-Allow-Origin": origin, "Vary": "Origin" } : {})
+  });
+  res.end(JSON.stringify(body));
+}
+async function startBridge() {
+  bridgeToken = await loadBridgeToken();
+  bridgeServer = http.createServer(async (req, res) => {
+    const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+    if (!EXTENSION_ORIGIN.test(origin)) return replyJson(res, 403, { ok: false, error: "Only a Chrome extension origin is accepted." });
+    if (req.method === "OPTIONS" && req.url === "/api/text") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Max-Age": "300",
+        "Vary": "Origin"
+      });
+      return res.end();
+    }
+    if (req.method !== "POST" || req.url !== "/api/text") {
+      return replyJson(res, 404, { ok: false, error: "Not found." }, origin);
+    }
+    if (req.headers.authorization !== `Bearer ${bridgeToken}`) {
+      return replyJson(res, 401, { ok: false, error: "Bridge token is missing or incorrect." }, origin);
+    }
+    const contentType = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+    if (contentType !== "application/json") return replyJson(res, 415, { ok: false, error: "Send application/json." }, origin);
+    const length = Number(req.headers["content-length"] || 0);
+    if (Number.isFinite(length) && length > MAX_BRIDGE_BODY) {
+      req.resume();
+      return replyJson(res, 413, { ok: false, error: "Text payload is too large (maximum 12,000 characters)." }, origin);
+    }
+    try {
+      let raw = "";
+      let size = 0;
+      for await (const chunk of req) {
+        size += chunk.length;
+        if (size > MAX_BRIDGE_BODY) {
+          res.destroy();
+          return;
+        }
+        raw += chunk.toString("utf8");
+      }
+      const body = JSON.parse(raw);
+      if (!body || typeof body.text !== "string") return replyJson(res, 400, { ok: false, error: "Request must contain a text string." }, origin);
+      const text = body.text.trim();
+      if (!text) return replyJson(res, 400, { ok: false, error: "Text cannot be empty." }, origin);
+      if (text.length > 12000) return replyJson(res, 413, { ok: false, error: "Text exceeds the 12,000-character limit." }, origin);
+      if (!mainWindow || mainWindow.isDestroyed()) return replyJson(res, 503, { ok: false, error: "Voice Studio is not open." }, origin);
+      sendBridgeText(text);
+      return replyJson(res, 200, { ok: true, received: text.length }, origin);
+    } catch {
+      if (!res.destroyed) replyJson(res, 400, { ok: false, error: "Invalid JSON request body." }, origin);
+    }
+  });
+  bridgeServer.on("error", error => sendProgress(`Local extension bridge could not start: ${error.message}`));
+  bridgeServer.listen(BRIDGE_PORT, BRIDGE_HOST);
 }
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -101,9 +185,7 @@ async function installEngine() {
     else await tar.x({ file: archivePath, cwd: unpackDir, strict: true });
     const executable = await walkForExecutable(unpackDir);
     if (!executable) throw new Error("The downloaded archive did not contain the expected pocket-tts executable.");
-    if (process.platform === "win32" && !executable.toLowerCase().endsWith(".exe")) {
-      throw new Error("The release archive did not contain a Windows .exe.");
-    }
+    if (process.platform === "win32" && !executable.toLowerCase().endsWith(".exe")) throw new Error("The release archive did not contain a Windows .exe.");
     await fs.writeFile(marker, JSON.stringify({ path: executable, version: ENGINE_TAG }, null, 2), "utf8");
     await fs.rm(archivePath, { force: true });
     sendProgress("Native engine installed. The speech model downloads on first generation.");
@@ -118,7 +200,10 @@ async function normalizeAudio(inputPath) {
   await runProcess(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", outputPath]);
   return outputPath;
 }
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await startBridge();
+  ipcMain.handle("bridge:get-info", () => ({ host: BRIDGE_HOST, port: BRIDGE_PORT, token: bridgeToken }));
+  ipcMain.handle("bridge:copy-token", () => { clipboard.writeText(bridgeToken); return true; });
   ipcMain.handle("audio:choose-reference", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Choose a voice recording", properties: ["openFile"],
@@ -148,6 +233,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("tts:generate", async (_event, request) => {
     if (!request || typeof request.text !== "string" || !request.text.trim()) throw new Error("Enter text to generate speech.");
+    if (request.text.length > 12000) throw new Error("Text is limited to 12,000 characters.");
     if (!request.referencePath) throw new Error("Choose a voice recording first.");
     if (!request.outputPath) throw new Error("Choose an output WAV path.");
     if (process.platform !== "win32") throw new Error("This initial build targets Windows 10/11 x64.");
@@ -158,22 +244,16 @@ app.whenReady().then(() => {
       sendProgress("Loading the local speech model. The first run downloads model files; later runs use the local cache.");
       await runProcess(binary, ["generate", "--text", request.text, "--voice", normalizedPath, "--output-path", request.outputPath, "--language", "english"], {
         cwd: workDir(),
-        env: {
-          ...process.env,
-          HF_HOME: cacheDir(),
-          HF_HUB_CACHE: path.join(cacheDir(), "hub"),
-          HUGGINGFACE_HUB_CACHE: path.join(cacheDir(), "hub")
-        }
+        env: { ...process.env, HF_HOME: cacheDir(), HF_HUB_CACHE: path.join(cacheDir(), "hub"), HUGGINGFACE_HUB_CACHE: path.join(cacheDir(), "hub") }
       });
       const stat = await fs.stat(request.outputPath);
       if (stat.size < 44) throw new Error("The engine finished but the output WAV is empty or invalid.");
       sendProgress("Speech generation finished.");
       return { outputPath: request.outputPath };
-    } finally {
-      await fs.rm(normalizedPath, { force: true }).catch(() => {});
-    }
+    } finally { await fs.rm(normalizedPath, { force: true }).catch(() => {}); }
   });
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+app.on("before-quit", () => { if (bridgeServer) bridgeServer.close(); });

@@ -1,0 +1,1 @@
+Model files will be downloaded to this location or to the user's application data directory during first-run setup. No model weights are included in this scaffold. Before shipping, pin a trusted source and revision, verify SHA-256 hashes, record model license/attribution, and support offline inference after download.

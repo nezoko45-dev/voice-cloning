@@ -1,21 +1,18 @@
 {
   "name": "voice-studio-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Local-first Windows voice cloning and text-to-speech desktop app",
   "main": "src/main.js",
   "scripts": { "start": "electron .", "dist:win": "electron-builder --win nsis" },
   "devDependencies": { "electron": "^38.0.0", "electron-builder": "^26.0.12" },
-  "dependencies": { "ffmpeg-static": "^5.2.0" },
+  "dependencies": { "ffmpeg-static": "^5.2.0", "extract-zip": "^2.0.1", "tar": "^7.4.3" },
   "build": {
     "appId": "dev.voiceagent.voicestudio",
     "productName": "Voice Studio",
     "directories": { "output": "release" },
     "files": ["src/**/*", "package.json"],
-    "extraResources": [
-      { "from": "runtime", "to": "runtime", "filter": ["**/*"] },
-      { "from": "models", "to": "models", "filter": ["**/*"] }
-    ],
+    "asarUnpack": ["node_modules/ffmpeg-static/**"],
     "win": { "target": ["nsis"], "artifactName": "Voice-Studio-Setup-${version}.${ext}" },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
   }

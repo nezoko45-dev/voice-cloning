@@ -7,7 +7,7 @@
   let restartTimer = null;
   let restartDelay = 800;
   let lastSentAt = 0;
-  let stoppedByUser = false;
+  let stoppedByUser = false;\n  let currentAudio = null;\n  const audioQueue = [];\n  let playingAudio = false;
 
   function send(message) {
     try {

@@ -55,15 +55,19 @@ async function startBridge() {
   bridgeServer = http.createServer(async (req, res) => {
     const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
     if (!EXTENSION_ORIGIN.test(origin)) return replyJson(res, 403, { ok: false, error: "Only a Chrome extension origin is accepted." });
-    if (req.method === "OPTIONS" && req.url === "/api/text") {
+    if (req.method === "OPTIONS" && (req.url === "/api/text" || req.url === "/api/health")) {
       res.writeHead(204, {
         "Access-Control-Allow-Origin": origin,
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "Authorization, Content-Type",
         "Access-Control-Max-Age": "300",
         "Vary": "Origin"
       });
       return res.end();
+    }
+    if (req.method === "GET" && req.url === "/api/health") {
+      if (req.headers.authorization !== `Bearer ${bridgeToken}`) return replyJson(res, 401, { ok: false, error: "Bridge token is missing or incorrect." }, origin);
+      return replyJson(res, 200, { ok: true, app: "Voice Studio" }, origin);
     }
     if (req.method !== "POST" || req.url !== "/api/text") {
       return replyJson(res, 404, { ok: false, error: "Not found." }, origin);

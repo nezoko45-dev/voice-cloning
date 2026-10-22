@@ -1,10 +1,28 @@
 {
   "manifest_version": 3,
   "name": "VoiceAgent Pocket",
-  "version": "1.0.0",
-  "description": "A configurable voice assistant powered by OpenRouter, with browser speech and a PocketWebTools voice-cloning handoff.",
-  "permissions": ["storage", "clipboardWrite"],
-  "host_permissions": ["https://openrouter.ai/*"],
+  "version": "1.1.0",
+  "description": "A configurable AI voice assistant with automatic PocketWebTools cloned-speech handoff.",
+  "permissions": [
+    "storage",
+    "clipboardWrite",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://openrouter.ai/*",
+    "https://pocketweb.tools/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://pocketweb.tools/voice-cloning*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_title": "VoiceAgent Pocket",
     "default_popup": "popup.html"

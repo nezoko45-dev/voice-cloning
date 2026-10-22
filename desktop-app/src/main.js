@@ -4,6 +4,7 @@ const fs = require("node:fs/promises");
 const crypto = require("node:crypto");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
+const { pathToFileURL } = require("node:url");
 const { pipeline } = require("node:stream/promises");
 const { Readable } = require("node:stream");
 const extractZip = require("extract-zip");
@@ -260,23 +261,27 @@ app.whenReady().then(async () => {
     await fs.mkdir(outputDir, { recursive: true });
     const outputPath = path.join(outputDir, "voice-studio-output.wav");
     const rawOutputPath = path.join(workDir(), `generated-raw-${Date.now()}.wav`);
+    await fs.access(request.referencePath).catch(() => { throw new Error("The selected reference recording can no longer be found. Choose the WAV file again."); });
+    const referenceStat = await fs.stat(request.referencePath);
+    if (!referenceStat.isFile() || referenceStat.size < 44) throw new Error("The selected reference recording is empty or is not a valid audio file.");
+    sendProgress(`Using reference recording: ${path.basename(request.referencePath)}. Text length: ${request.text.length} characters.`);
     const binary = await installEngine();
     const normalizedPath = await normalizeAudio(request.referencePath);
     try {
-      sendProgress("Loading the local speech model. The first run downloads model files; later runs use the local cache.");
+      sendProgress("Generating the exact text entered in Voice Studio with the selected reference recording…");
       await runProcess(binary, ["generate", "--text", request.text, "--voice", normalizedPath, "--output-path", rawOutputPath, "--language", "english"], {
         cwd: workDir(),
         env: { ...process.env, HF_HOME: cacheDir(), HF_HUB_CACHE: path.join(cacheDir(), "hub"), HUGGINGFACE_HUB_CACHE: path.join(cacheDir(), "hub") }
       });
-      const rawStat = await fs.stat(rawOutputPath);
-      if (rawStat.size < 44) throw new Error("The engine finished but the generated WAV is empty or invalid.");
+      const rawStat = await fs.stat(rawOutputPath).catch(() => null);
+      if (!rawStat || rawStat.size < 44) throw new Error("Pocket TTS exited without creating a valid output file. No new speech was generated; check the status messages above and try again.");
       sendProgress("Converting audio to a standard PCM WAV file…");
       const ffmpeg = await resolveFfmpegExecutable();
       await runProcess(ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", "-i", rawOutputPath, "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", outputPath]);
       const stat = await fs.stat(outputPath);
       if (stat.size < 44) throw new Error("The converted output WAV is empty or invalid.");
-      sendProgress(`Speech saved as voice-studio-output.wav in Documents\\Voice Studio.`);
-      return { outputPath };
+      sendProgress(`Generated ${request.text.length} characters using ${path.basename(request.referencePath)}. Saved to Documents\\Voice Studio\\voice-studio-output.wav.`);
+      return { outputPath, audioUrl: pathToFileURL(outputPath).href };
     } finally {
       await fs.rm(normalizedPath, { force: true }).catch(() => {});
       await fs.rm(rawOutputPath, { force: true }).catch(() => {});

@@ -57,7 +57,8 @@
     if (!queuedText || busy) return;
     const field = findTextField();
     if (!field) return;
-    setFieldValue(field, queuedText);
+    const currentText = field.isContentEditable ? field.textContent : field.value;
+    if ((currentText || "").trim() !== queuedText) setFieldValue(field, queuedText);
     const consent = findConsentCheckbox();
     if (!isChecked(consent)) {
       setStatus("Reply is ready in PocketWebTools. Select the voice-permission checkbox to allow automatic generation.");

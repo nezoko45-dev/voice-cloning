@@ -9,19 +9,14 @@ const KOKORO_VOICES = new Set(["af_heart", "af_bella", "af_nicole", "af_sarah", 
 let kokoroPipelinePromise = null;
 let kokoroPipeline = null;
 
-const ENGINE_REPO = "kyutai-labs/pocket-tts";
-const ENGINE_TAG = "v4.0.1";
 const BRIDGE_HOST = "127.0.0.1";
 const BRIDGE_PORT = 47831;
 const MAX_BRIDGE_BODY = 24 * 1024;
 const EXTENSION_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
 let mainWindow;
-let installPromise = null;
 let bridgeServer = null;
 let bridgeToken = null;
 
-function workDir() { return path.join(app.getPath("userData"), "work"); }
-function cacheDir() { return path.join(app.getPath("userData"), "model-cache"); }
 function sendProgress(message) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("runtime:progress", message);
 }
@@ -115,7 +110,7 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, "index.html"));
 }
 function splitTextIntoChunks(text, maxChars = 360) {
-  const sentences = text.trim().match(/[^.!?]+[.!?]+[)"'\\]]*|[^.!?]+$/g) || [text.trim()];
+  const sentences = text.trim().match(/[^.!?]+[.!?]*/g) || [text.trim()];
   const chunks = [];
   let current = "";
   for (const sentence of sentences) {
@@ -128,7 +123,7 @@ function splitTextIntoChunks(text, maxChars = 360) {
     if (current) { chunks.push(current); current = ""; }
     if (part.length <= maxChars) { current = part; continue; }
     let piece = "";
-    for (const word of part.split(/\\s+/)) {
+    for (const word of part.split(/\s+/)) {
       if (piece && piece.length + 1 + word.length > maxChars) {
         chunks.push(piece);
         piece = "";

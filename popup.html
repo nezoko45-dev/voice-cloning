@@ -26,7 +26,7 @@
       <label for="systemPrompt">Behavior prompt</label>
       <textarea id="systemPrompt" rows="4">You are a natural, friendly voice assistant. Be concise when speaking, follow my instructions, ask clarifying questions when needed, and never pretend to have performed actions you have not performed.</textarea>
       <div class="setting-row">
-        <label class="check-label"><input id="autoSpeak" type="checkbox" checked> Speak replies aloud</label>
+        <label class="check-label"><input id="autoSpeak" type="checkbox"> Also speak replies with the browser's default voice</label>
       </div>
       <button id="saveSettings" class="primary">Save settings</button>
       <p id="settingsStatus" class="status" role="status"></p>
@@ -34,11 +34,7 @@
 
     <section class="chat-panel" aria-label="Conversation">
       <div id="messages" class="messages" aria-live="polite">
-        <div class="welcome">
-          <div class="wave">〰</div>
-          <h2>Ready when you are.</h2>
-          <p>Type a message or use the microphone to talk.</p>
-        </div>
+        <div class="welcome"><div class="wave">〰</div><h2>Ready when you are.</h2><p>Type a message or use the microphone to talk.</p></div>
       </div>
       <p id="status" class="status" role="status">Add your OpenRouter key in settings to get started.</p>
       <form id="chatForm" class="composer">
@@ -54,14 +50,13 @@
 
     <section class="handoff">
       <div>
-        <h2>Voice cloning handoff</h2>
-        <p>Copy the latest assistant reply, then open PocketWebTools to use it with your voice workflow.</p>
+        <h2>Automatic cloned speech</h2>
+        <p>Assistant replies are sent to the open PocketWebTools tab and generated using your chosen reference voice. Keep that tab open. First, choose a voice recording and confirm you have permission to clone it.</p>
       </div>
-      <button id="cloneButton" class="secondary" type="button">Copy reply &amp; open ↗</button>
+      <button id="cloneButton" class="secondary" type="button">Open voice setup ↗</button>
       <p id="cloneStatus" class="status" role="status"></p>
     </section>
-
-    <footer>AI responses can be wrong. Review important information before acting.</footer>
+    <footer>Only clone your own voice or a voice you have explicit permission to use. AI responses can be wrong.</footer>
   </main>
   <script src="popup.js"></script>
 </body>

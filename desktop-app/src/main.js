@@ -254,22 +254,33 @@ app.whenReady().then(async () => {
     if (!request || typeof request.text !== "string" || !request.text.trim()) throw new Error("Enter text to generate speech.");
     if (request.text.length > 12000) throw new Error("Text is limited to 12,000 characters.");
     if (!request.referencePath) throw new Error("Choose a voice recording first.");
-    if (!request.outputPath) throw new Error("Choose an output WAV path.");
     if (process.platform !== "win32") throw new Error("This initial build targets Windows 10/11 x64.");
     await fs.mkdir(cacheDir(), { recursive: true });
+    const outputDir = path.join(app.getPath("documents"), "Voice Studio");
+    await fs.mkdir(outputDir, { recursive: true });
+    const outputPath = path.join(outputDir, "voice-studio-output.wav");
+    const rawOutputPath = path.join(workDir(), `generated-raw-${Date.now()}.wav`);
     const binary = await installEngine();
     const normalizedPath = await normalizeAudio(request.referencePath);
     try {
       sendProgress("Loading the local speech model. The first run downloads model files; later runs use the local cache.");
-      await runProcess(binary, ["generate", "--text", request.text, "--voice", normalizedPath, "--output-path", request.outputPath, "--language", "english"], {
+      await runProcess(binary, ["generate", "--text", request.text, "--voice", normalizedPath, "--output-path", rawOutputPath, "--language", "english"], {
         cwd: workDir(),
         env: { ...process.env, HF_HOME: cacheDir(), HF_HUB_CACHE: path.join(cacheDir(), "hub"), HUGGINGFACE_HUB_CACHE: path.join(cacheDir(), "hub") }
       });
-      const stat = await fs.stat(request.outputPath);
-      if (stat.size < 44) throw new Error("The engine finished but the output WAV is empty or invalid.");
-      sendProgress("Speech generation finished.");
-      return { outputPath: request.outputPath };
-    } finally { await fs.rm(normalizedPath, { force: true }).catch(() => {}); }
+      const rawStat = await fs.stat(rawOutputPath);
+      if (rawStat.size < 44) throw new Error("The engine finished but the generated WAV is empty or invalid.");
+      sendProgress("Converting audio to a standard PCM WAV file…");
+      const ffmpeg = await resolveFfmpegExecutable();
+      await runProcess(ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", "-i", rawOutputPath, "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", outputPath]);
+      const stat = await fs.stat(outputPath);
+      if (stat.size < 44) throw new Error("The converted output WAV is empty or invalid.");
+      sendProgress(`Speech saved as voice-studio-output.wav in Documents\\Voice Studio.`);
+      return { outputPath };
+    } finally {
+      await fs.rm(normalizedPath, { force: true }).catch(() => {});
+      await fs.rm(rawOutputPath, { force: true }).catch(() => {});
+    }
   });
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

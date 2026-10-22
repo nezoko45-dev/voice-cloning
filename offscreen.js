@@ -1,80 +1,180 @@
 (() => {
+  "use strict";
+
   let recognition = null;
   let shouldListen = false;
   let isListening = false;
   let restartTimer = null;
+  let restartDelay = 800;
   let lastSentAt = 0;
-  const send = (message) => chrome.runtime.sendMessage(message).catch(() => {});
-  function status(message, error = false) {
-    send({ type: "OFFSCREEN_STATUS", listening: shouldListen, message, error });
-  }
-  function startRecognition() {
-    const SpeechRecognition = self.SpeechRecognition || self.webkitSpeechRecognition;
-    if (!shouldListen || isListening) return;
-    if (!SpeechRecognition) {
-      shouldListen = false;
-      status("This Chrome build does not expose SpeechRecognition in the background document. Background voice input is unavailable.", true);
-      return;
+  let stoppedByUser = false;
+
+  function send(message) {
+    try {
+      const result = chrome.runtime.sendMessage(message);
+      if (result && typeof result.catch === "function") result.catch(() => {});
+    } catch (_) {
+      // The extension service worker can be restarting; never let messaging crash this document.
     }
-    recognition = new SpeechRecognition();
-    recognition.lang = navigator.language || "en-US";
-    recognition.interimResults = false;
-    recognition.continuous = true;
-    recognition.maxAlternatives = 1;
-    recognition.onstart = () => { isListening = true; status("Listening in the background. Close the popup whenever you like."); };
-    recognition.onresult = (event) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (!event.results[i].isFinal) continue;
-        const text = (event.results[i][0]?.transcript || "").trim();
-        const now = Date.now();
-        if (text && now - lastSentAt > 800) {
-          lastSentAt = now;
-          send({ type: "VOICE_TRANSCRIPT_FINAL", text });
-        }
-      }
-    };
-    recognition.onerror = (event) => {
-      if (["not-allowed", "service-not-allowed", "audio-capture"].includes(event.error)) {
-        shouldListen = false;
-        status("Microphone permission or audio capture failed: " + event.error, true);
-      } else {
-        status("Speech recognition interrupted (" + event.error + "); attempting to reconnect.");
-      }
-    };
-    recognition.onend = () => {
-      isListening = false;
-      if (shouldListen) {
-        clearTimeout(restartTimer);
-        restartTimer = setTimeout(startRecognition, 700);
-      } else {
-        status("Background listening stopped.");
-      }
-    };
-    try { recognition.start(); }
-    catch (error) {
-      isListening = false;
+  }
+
+  function status(message, error = false, listening = shouldListen) {
+    send({ type: "OFFSCREEN_STATUS", listening, message, error });
+  }
+
+  function clearRestart() {
+    if (restartTimer !== null) {
       clearTimeout(restartTimer);
-      restartTimer = setTimeout(() => {
-        if (shouldListen) startRecognition();
-      }, 1200);
-      status("Restarting speech recognition after interruption.");
+      restartTimer = null;
     }
   }
+
+  function scheduleRestart() {
+    clearRestart();
+    if (!shouldListen || stoppedByUser) return;
+    const delay = restartDelay;
+    restartDelay = Math.min(Math.round(restartDelay * 1.6), 8000);
+    restartTimer = setTimeout(() => {
+      restartTimer = null;
+      startRecognition();
+    }, delay);
+  }
+
   function stopRecognition() {
     shouldListen = false;
-    clearTimeout(restartTimer);
-    try { if (recognition && isListening) recognition.stop(); } catch (_) {}
+    stoppedByUser = true;
+    clearRestart();
+    const active = recognition;
+    recognition = null;
     isListening = false;
-    status("Background listening stopped.");
+    if (active) {
+      active.onstart = null;
+      active.onresult = null;
+      active.onerror = null;
+      active.onend = null;
+      try { active.abort(); } catch (_) {
+        try { active.stop(); } catch (_) {}
+      }
+    }
+    status("Background listening stopped.", false, false);
   }
-  chrome.runtime.onMessage.addListener((message, sender) => {
+
+  function startRecognition() {
+    if (!shouldListen || isListening) return;
+
+    const Recognition = self.SpeechRecognition || self.webkitSpeechRecognition;
+    if (typeof Recognition !== "function") {
+      shouldListen = false;
+      status(
+        "This Chrome environment does not provide SpeechRecognition in the extension background document. Open VoiceAgent Pocket and use a supported voice-input context.",
+        true,
+        false
+      );
+      chrome.storage.local.set({ backgroundListening: false }).catch(() => {});
+      return;
+    }
+
+    let instance;
+    try {
+      instance = new Recognition();
+      instance.lang = navigator.language || "en-US";
+      instance.interimResults = false;
+      instance.continuous = true;
+      instance.maxAlternatives = 1;
+    } catch (error) {
+      shouldListen = false;
+      status("Could not initialize speech recognition: " + (error?.message || String(error)), true, false);
+      chrome.storage.local.set({ backgroundListening: false }).catch(() => {});
+      return;
+    }
+
+    recognition = instance;
+    instance.onstart = () => {
+      if (recognition !== instance) return;
+      isListening = true;
+      restartDelay = 800;
+      status("Listening in the background. You can close the popup.");
+    };
+
+    instance.onresult = (event) => {
+      if (recognition !== instance || !shouldListen) return;
+      try {
+        const results = event.results;
+        for (let i = event.resultIndex || 0; i < results.length; i++) {
+          if (!results[i] || !results[i].isFinal) continue;
+          const transcript = String(results[i][0]?.transcript || "").trim();
+          const now = Date.now();
+          if (transcript && now - lastSentAt > 800) {
+            lastSentAt = now;
+            send({ type: "VOICE_TRANSCRIPT_FINAL", text: transcript });
+          }
+        }
+      } catch (error) {
+        status("Could not read the speech result: " + (error?.message || String(error)), true);
+      }
+    };
+
+    instance.onerror = (event) => {
+      if (recognition !== instance) return;
+      const code = String(event?.error || "unknown");
+      if (["not-allowed", "service-not-allowed", "audio-capture"].includes(code)) {
+        shouldListen = false;
+        isListening = false;
+        clearRestart();
+        status("Speech input stopped (" + code + "). Check microphone permission and Chrome's speech service.", true, false);
+        chrome.storage.local.set({ backgroundListening: false }).catch(() => {});
+      } else if (shouldListen) {
+        status("Speech recognition interrupted (" + code + "); reconnecting.");
+      }
+    };
+
+    instance.onend = () => {
+      if (recognition !== instance) return;
+      recognition = null;
+      isListening = false;
+      if (shouldListen && !stoppedByUser) {
+        status("Reconnecting speech recognition…");
+        scheduleRestart();
+      } else {
+        status("Background listening stopped.", false, false);
+      }
+    };
+
+    try {
+      instance.start();
+    } catch (error) {
+      recognition = null;
+      isListening = false;
+      if (shouldListen) {
+        status("Speech recognition could not start yet; retrying. " + (error?.message || ""), false);
+        scheduleRestart();
+      }
+    }
+  }
+
+  chrome.runtime.onMessage.addListener((message) => {
     if (message?.target !== "offscreen") return;
     if (message.type === "START_LISTENING") {
+      stoppedByUser = false;
       shouldListen = true;
       startRecognition();
-    } else if (message.type === "STOP_LISTENING") stopRecognition();
+    } else if (message.type === "STOP_LISTENING") {
+      stopRecognition();
+    }
   });
-  chrome.storage.local.get({ backgroundListening: false }, (state) => {
-    if (state.backgroundListening) { shouldListen = true; startRecognition(); }
-  });
+
+  async function initialize() {
+    try {
+      const state = await chrome.storage.local.get({ backgroundListening: false });
+      if (state.backgroundListening === true) {
+        stoppedByUser = false;
+        shouldListen = true;
+        startRecognition();
+      }
+    } catch (error) {
+      status("Could not restore listening state: " + (error?.message || String(error)), true, false);
+    }
+  }
+
+  initialize();
 })();

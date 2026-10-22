@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, clipboard } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, clipboard, session } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const crypto = require("node:crypto");
@@ -236,6 +236,12 @@ function writePcmWav(samples, sampleRate, outputPath) {
   return fs.writeFile(outputPath, wav);
 }
 app.whenReady().then(async () => {
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(Boolean(mainWindow && webContents === mainWindow.webContents && permission === "media"));
+  });
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) =>
+    Boolean(mainWindow && webContents === mainWindow.webContents && permission === "media")
+  );
   await startBridge();
   ipcMain.handle("bridge:get-info", () => ({ host: BRIDGE_HOST, port: BRIDGE_PORT, token: bridgeToken }));
   ipcMain.handle("bridge:copy-token", () => { clipboard.writeText(bridgeToken); return true; });

@@ -3,13 +3,11 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 const crypto = require("node:crypto");
 const http = require("node:http");
-const { spawn } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
-const { pipeline } = require("node:stream/promises");
-const { Readable } = require("node:stream");
-const extractZip = require("extract-zip");
-const tar = require("tar");
-const ffmpegPath = require("ffmpeg-static");
+const KOKORO_MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX";
+const KOKORO_VOICES = new Set(["af_heart", "af_bella", "af_nicole", "af_sarah", "af_sky", "am_adam", "am_michael", "bf_emma", "bf_isabella", "bm_george", "bm_lewis"]);
+let kokoroPipelinePromise = null;
+let kokoroPipeline = null;
 
 const ENGINE_REPO = "kyutai-labs/pocket-tts";
 const ENGINE_TAG = "v4.0.1";
@@ -22,7 +20,6 @@ let installPromise = null;
 let bridgeServer = null;
 let bridgeToken = null;
 
-function runtimeDir() { return path.join(app.getPath("userData"), "runtime"); }
 function workDir() { return path.join(app.getPath("userData"), "work"); }
 function cacheDir() { return path.join(app.getPath("userData"), "model-cache"); }
 function sendProgress(message) {
@@ -117,108 +114,86 @@ function createWindow() {
   });
   mainWindow.loadFile(path.join(__dirname, "index.html"));
 }
-function runProcess(binary, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(binary, args, { windowsHide: true, ...options });
-    let stderr = "";
-    child.stdout?.on("data", chunk => {
-      const line = chunk.toString().trim();
-      if (line) sendProgress(line.slice(-220));
-    });
-    child.stderr?.on("data", chunk => {
-      const line = chunk.toString();
-      stderr += line;
-      const latest = line.trim();
-      if (latest) sendProgress(latest.slice(-220));
-    });
-    child.on("error", reject);
-    child.on("close", code => code === 0 ? resolve() : reject(new Error(stderr.trim().slice(-1400) || `Process exited with code ${code}`)));
-  });
-}
-async function walkForExecutable(folder) {
-  const entries = await fs.readdir(folder, { withFileTypes: true });
-  for (const entry of entries) {
-    const full = path.join(folder, entry.name);
-    if (entry.isDirectory()) {
-      const found = await walkForExecutable(full);
-      if (found) return found;
-    } else if (/^pocket-tts(?:\.exe)?$/i.test(entry.name)) return full;
-  }
-  return null;
-}
-async function installEngine() {
-  const dir = runtimeDir();
-  await fs.mkdir(dir, { recursive: true });
-  const marker = path.join(dir, "engine-path.json");
-  try {
-    const saved = JSON.parse(await fs.readFile(marker, "utf8"));
-    await fs.access(saved.path);
-    return saved.path;
-  } catch {}
-  if (installPromise) return installPromise;
-  installPromise = (async () => {
-    sendProgress("Connecting to the official Pocket TTS release…");
-    const apiUrl = `https://api.github.com/repos/${ENGINE_REPO}/releases/tags/${ENGINE_TAG}`;
-    const releaseResponse = await fetch(apiUrl, { headers: { "Accept": "application/vnd.github+json", "User-Agent": "Voice-Studio-Desktop" } });
-    if (!releaseResponse.ok) throw new Error(`Could not check the official engine release (HTTP ${releaseResponse.status}).`);
-    const release = await releaseResponse.json();
-    const assets = Array.isArray(release.assets) ? release.assets : [];
-    const candidates = assets.filter(asset => {
-      const name = asset.name.toLowerCase();
-      return name.includes("windows") && (name.includes("x86_64") || name.includes("x86-64") || name.includes("win64")) && (name.endsWith(".zip") || name.endsWith(".tar.gz"));
-    });
-    if (!candidates.length) throw new Error("The pinned Pocket TTS release did not expose a recognizable Windows x64 archive. Please check the release page before retrying.");
-    const asset = candidates[0];
-    sendProgress(`Downloading Pocket TTS ${ENGINE_TAG} (${asset.name})…`);
-    const response = await fetch(asset.browser_download_url, { headers: { "User-Agent": "Voice-Studio-Desktop" } });
-    if (!response.ok || !response.body) throw new Error(`Engine download failed (HTTP ${response.status}).`);
-    const archivePath = path.join(dir, asset.name);
-    await pipeline(Readable.fromWeb(response.body), (await import("node:fs")).createWriteStream(archivePath));
-    if (asset.digest && asset.digest.startsWith("sha256:")) {
-      sendProgress("Verifying downloaded engine…");
-      const hash = crypto.createHash("sha256").update(await fs.readFile(archivePath)).digest("hex");
-      if (hash.toLowerCase() !== asset.digest.slice(7).toLowerCase()) {
-        await fs.rm(archivePath, { force: true });
-        throw new Error("Engine archive checksum did not match GitHub's published SHA-256 digest.");
-      }
+function splitTextIntoChunks(text, maxChars = 360) {
+  const sentences = text.trim().match(/[^.!?]+[.!?]+[)"'\\]]*|[^.!?]+$/g) || [text.trim()];
+  const chunks = [];
+  let current = "";
+  for (const sentence of sentences) {
+    const part = sentence.trim();
+    if (!part) continue;
+    if (part.length <= maxChars && (!current || (current.length + 1 + part.length) <= maxChars)) {
+      current = current ? current + " " + part : part;
+      continue;
     }
-    const unpackDir = path.join(dir, "unpacked");
-    await fs.rm(unpackDir, { recursive: true, force: true });
-    await fs.mkdir(unpackDir, { recursive: true });
-    sendProgress("Extracting the native Windows engine…");
-    if (asset.name.toLowerCase().endsWith(".zip")) await extractZip(archivePath, { dir: unpackDir });
-    else await tar.x({ file: archivePath, cwd: unpackDir, strict: true });
-    const executable = await walkForExecutable(unpackDir);
-    if (!executable) throw new Error("The downloaded archive did not contain the expected pocket-tts executable.");
-    if (process.platform === "win32" && !executable.toLowerCase().endsWith(".exe")) throw new Error("The release archive did not contain a Windows .exe.");
-    await fs.writeFile(marker, JSON.stringify({ path: executable, version: ENGINE_TAG }, null, 2), "utf8");
-    await fs.rm(archivePath, { force: true });
-    sendProgress("Native engine installed. The speech model downloads on first generation.");
-    return executable;
-  })();
-  try { return await installPromise; } finally { installPromise = null; }
-}
-async function resolveFfmpegExecutable() {
-  if (!ffmpegPath) throw new Error("The bundled FFmpeg converter is missing. Reinstall Voice Studio using the latest Windows installer.");
-  // Native executables cannot be launched from inside Electron's ASAR archive.
-  // electron-builder places asarUnpack files beside app.asar in app.asar.unpacked.
-  const candidates = [];
-  if (app.isPackaged) candidates.push(ffmpegPath.replace(/app\.asar([\\/])/i, "app.asar.unpacked$1"));
-  candidates.push(ffmpegPath);
-  for (const candidate of candidates) {
-    try {
-      await fs.access(candidate);
-      return candidate;
-    } catch {}
+    if (current) { chunks.push(current); current = ""; }
+    if (part.length <= maxChars) { current = part; continue; }
+    let piece = "";
+    for (const word of part.split(/\\s+/)) {
+      if (piece && piece.length + 1 + word.length > maxChars) {
+        chunks.push(piece);
+        piece = "";
+      }
+      piece = piece ? piece + " " + word : word;
+    }
+    if (piece) current = piece;
   }
-  throw new Error("FFmpeg was not found in the installed app. Please reinstall the latest Voice Studio installer. Expected an executable under resources\\app.asar.unpacked\\node_modules\\ffmpeg-static.");
+  if (current) chunks.push(current);
+  return chunks.length ? chunks : [text.trim()];
 }
-async function normalizeAudio(inputPath) {
-  const executable = await resolveFfmpegExecutable();
-  await fs.mkdir(workDir(), { recursive: true });
-  const outputPath = path.join(workDir(), `reference-${Date.now()}.wav`);
-  await runProcess(executable, ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", outputPath]);
-  return outputPath;
+async function getKokoroPipeline() {
+  if (kokoroPipeline) return kokoroPipeline;
+  if (kokoroPipelinePromise) return kokoroPipelinePromise;
+  kokoroPipelinePromise = (async () => {
+    const modelCache = path.join(app.getPath("userData"), "kokoro-model-cache");
+    await fs.mkdir(modelCache, { recursive: true });
+    sendProgress("Preparing Kokoro TTS. The first run downloads its local model (internet required).");
+    const transformers = await import("@huggingface/transformers");
+    transformers.env.cacheDir = modelCache;
+    transformers.env.allowRemoteModels = true;
+    transformers.env.useBrowserCache = false;
+    const tts = await transformers.pipeline("text-to-speech", KOKORO_MODEL, {
+      dtype: "q8",
+      progress_callback: event => {
+        if (!event || typeof event.status !== "string") return;
+        if (event.status === "progress" && Number.isFinite(event.progress)) {
+          sendProgress("Downloading Kokoro model: " + Math.round(event.progress) + "%");
+        } else if (event.status === "done") {
+          sendProgress("Kokoro model file ready.");
+        } else if (event.status === "download") {
+          sendProgress("Downloading Kokoro model file…");
+        }
+      }
+    });
+    kokoroPipeline = tts;
+    return tts;
+  })();
+  try { return await kokoroPipelinePromise; }
+  catch (error) {
+    kokoroPipelinePromise = null;
+    throw error;
+  }
+}
+function writePcmWav(samples, sampleRate, outputPath) {
+  const dataBytes = samples.length * 2;
+  const wav = Buffer.alloc(44 + dataBytes);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + dataBytes, 4);
+  wav.write("WAVE", 8);
+  wav.write("fmt ", 12);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(dataBytes, 40);
+  for (let i = 0; i < samples.length; i++) {
+    const sample = Math.max(-1, Math.min(1, Number(samples[i]) || 0));
+    wav.writeInt16LE(sample < 0 ? Math.round(sample * 32768) : Math.round(sample * 32767), 44 + i * 2);
+  }
+  return fs.writeFile(outputPath, wav);
 }
 app.whenReady().then(async () => {
   await startBridge();
@@ -244,48 +219,45 @@ app.whenReady().then(async () => {
     if (typeof outputPath !== "string" || !path.isAbsolute(outputPath)) throw new Error("Invalid output path.");
     await shell.showItemInFolder(outputPath);
   });
-  ipcMain.handle("app:engine-status", async () => {
-    try {
-      const marker = JSON.parse(await fs.readFile(path.join(runtimeDir(), "engine-path.json"), "utf8"));
-      await fs.access(marker.path);
-      return { ready: true, version: marker.version };
-    } catch { return { ready: false, message: "Pocket TTS will be downloaded automatically the first time you generate speech. Internet is required for the initial engine and model downloads." }; }
-  });
+  ipcMain.handle("app:engine-status", async () => ({
+    ready: Boolean(kokoroPipeline),
+    version: "Kokoro 82M (ONNX)",
+    message: "Kokoro runs locally. Its model is downloaded on the first generation and cached on this PC; internet is needed only for that initial download."
+  }));
   ipcMain.handle("tts:generate", async (_event, request) => {
     if (!request || typeof request.text !== "string" || !request.text.trim()) throw new Error("Enter text to generate speech.");
     if (request.text.length > 12000) throw new Error("Text is limited to 12,000 characters.");
-    if (!request.referencePath) throw new Error("Choose a voice recording first.");
     if (process.platform !== "win32") throw new Error("This initial build targets Windows 10/11 x64.");
-    await fs.mkdir(cacheDir(), { recursive: true });
+    const voice = typeof request.voice === "string" && KOKORO_VOICES.has(request.voice) ? request.voice : "af_heart";
+    const text = request.text.trim();
+    const chunks = splitTextIntoChunks(text);
     const outputDir = path.join(app.getPath("documents"), "Voice Studio");
     await fs.mkdir(outputDir, { recursive: true });
     const outputPath = path.join(outputDir, "voice-studio-output.wav");
-    const rawOutputPath = path.join(workDir(), `generated-raw-${Date.now()}.wav`);
-    await fs.access(request.referencePath).catch(() => { throw new Error("The selected reference recording can no longer be found. Choose the WAV file again."); });
-    const referenceStat = await fs.stat(request.referencePath);
-    if (!referenceStat.isFile() || referenceStat.size < 44) throw new Error("The selected reference recording is empty or is not a valid audio file.");
-    sendProgress(`Using reference recording: ${path.basename(request.referencePath)}. Text length: ${request.text.length} characters.`);
-    const binary = await installEngine();
-    const normalizedPath = await normalizeAudio(request.referencePath);
-    try {
-      sendProgress("Generating the exact text entered in Voice Studio with the selected reference recording…");
-      await runProcess(binary, ["generate", "--text", request.text, "--voice", normalizedPath, "--output-path", rawOutputPath, "--language", "english"], {
-        cwd: workDir(),
-        env: { ...process.env, HF_HOME: cacheDir(), HF_HUB_CACHE: path.join(cacheDir(), "hub"), HUGGINGFACE_HUB_CACHE: path.join(cacheDir(), "hub") }
-      });
-      const rawStat = await fs.stat(rawOutputPath).catch(() => null);
-      if (!rawStat || rawStat.size < 44) throw new Error("Pocket TTS exited without creating a valid output file. No new speech was generated; check the status messages above and try again.");
-      sendProgress("Converting audio to a standard PCM WAV file…");
-      const ffmpeg = await resolveFfmpegExecutable();
-      await runProcess(ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", "-i", rawOutputPath, "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", outputPath]);
-      const stat = await fs.stat(outputPath);
-      if (stat.size < 44) throw new Error("The converted output WAV is empty or invalid.");
-      sendProgress(`Generated ${request.text.length} characters using ${path.basename(request.referencePath)}. Saved to Documents\\Voice Studio\\voice-studio-output.wav.`);
-      return { outputPath, audioUrl: pathToFileURL(outputPath).href };
-    } finally {
-      await fs.rm(normalizedPath, { force: true }).catch(() => {});
-      await fs.rm(rawOutputPath, { force: true }).catch(() => {});
+    const tts = await getKokoroPipeline();
+    const generatedChunks = [];
+    let sampleRate = 24000;
+    for (let i = 0; i < chunks.length; i++) {
+      sendProgress("Kokoro is generating text chunk " + (i + 1) + " of " + chunks.length + " using voice " + voice + "…");
+      const result = await tts(chunks[i], { voice });
+      if (!result || !result.audio || !result.audio.length) throw new Error("Kokoro returned no audio for text chunk " + (i + 1) + ". Please try a shorter sentence.");
+      if (Number.isFinite(result.sampling_rate)) sampleRate = result.sampling_rate;
+      generatedChunks.push(Float32Array.from(result.audio));
     }
+    const silenceLength = Math.round(sampleRate * 0.16);
+    const totalSamples = generatedChunks.reduce((sum, chunk) => sum + chunk.length, 0) + Math.max(0, generatedChunks.length - 1) * silenceLength;
+    const combined = new Float32Array(totalSamples);
+    let offset = 0;
+    generatedChunks.forEach((chunk, index) => {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+      if (index < generatedChunks.length - 1) offset += silenceLength;
+    });
+    await writePcmWav(combined, sampleRate, outputPath);
+    const stat = await fs.stat(outputPath);
+    if (stat.size < 44 || combined.length === 0) throw new Error("Kokoro did not produce a valid WAV file.");
+    sendProgress("Generated " + text.length + " characters with Kokoro voice " + voice + ". Saved to Documents\\\\Voice Studio\\\\voice-studio-output.wav.");
+    return { outputPath, audioUrl: pathToFileURL(outputPath).href, voice, characters: text.length };
   });
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

@@ -1,15 +1,25 @@
 (() => {
   const MAX_TEXT = 2000;
-  let queuedText = "";
+  let sentenceQueue = [];
+  let currentSentence = "";
   let busy = false;
-  let observer = null;
+  let generationObserver = null;
+  let pageObserver = null;
+  let generationStartedAt = 0;
+  let oldAudioSources = new Set();
 
   const visible = (el) => !!(el && el.getClientRects().length);
-  const normalized = (s) => (s || "").replace(/\\s+/g, " ").trim().toLowerCase();
+  const normalized = (s) => (s || "").replace(/\s+/g, " ").trim().toLowerCase();
+
+  function splitSentences(text) {
+    // Split on sentence-ending punctuation while preserving punctuation and avoiding empty items.
+    return (text.match(/[^.!?。！？]+[.!?。！？]+["'”’)\]]*|[^.!?。！？]+$/g) || [text])
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
 
   function findTextField() {
     const fields = [...document.querySelectorAll("textarea, [contenteditable='true'], input[type='text']")].filter(visible);
-    // Prefer a multi-line text editor; ignore newsletter/email fields.
     return fields.find((el) => el.tagName === "TEXTAREA" || el.isContentEditable) ||
       fields.find((el) => !/email|subscribe/i.test((el.getAttribute("placeholder") || "") + " " + (el.getAttribute("aria-label") || "")));
   }
@@ -34,6 +44,8 @@
 
   function setFieldValue(field, value) {
     const text = value.slice(0, MAX_TEXT);
+    // Programmatically fill the page's text box, equivalent to pasting the sentence into it.
+    // Direct field updates are more reliable than synthetic OS clipboard shortcuts in Chrome.
     if (field.isContentEditable) {
       field.focus();
       field.textContent = text;
@@ -53,81 +65,161 @@
     chrome.runtime.sendMessage({ type: "POCKET_CLONE_STATUS", message }).catch(() => {});
   }
 
-  function attemptGenerate() {
-    if (!queuedText || busy) return;
+  function audioSources() {
+    return new Set([...document.querySelectorAll("audio")].map((a) => a.currentSrc || a.src).filter(Boolean));
+  }
+
+  function findNewAudio() {
+    const audios = [...document.querySelectorAll("audio")].filter(visible);
+    return audios.reverse().find((audio) => {
+      const src = audio.currentSrc || audio.src;
+      return src && (!oldAudioSources.has(src) || audio.readyState >= 2);
+    }) || audios[audios.length - 1] || null;
+  }
+
+  function clickResultPlay(audio) {
+    // Prefer the result player's own Play button when present.
+    const scope = audio?.closest("section, article, [class*='result'], [class*='audio'], [class*='player']") || audio?.parentElement?.parentElement;
+    const buttons = [...(scope || document).querySelectorAll("button, [role='button']")].filter(visible);
+    const playButton = buttons.find((button) => /^(play|play audio|▶|▶ play)$/i.test(normalized(button.innerText || button.getAttribute("aria-label") || button.title)));
+    if (playButton && !playButton.disabled) {
+      playButton.click();
+      return true;
+    }
+    if (audio) {
+      audio.play().catch(() => setStatus("Sentence generated. Click Play on the result player if Chrome blocks automatic playback."));
+      return true;
+    }
+    return false;
+  }
+
+  function cleanupObserver() {
+    if (generationObserver) generationObserver.disconnect();
+    generationObserver = null;
+  }
+
+  function finishCurrentSentence(message) {
+    cleanupObserver();
+    busy = false;
+    currentSentence = "";
+    if (message) setStatus(message);
+    if (sentenceQueue.length) {
+      window.setTimeout(generateNextSentence, 500);
+    } else {
+      setStatus("All sentences in this reply have been generated and played.");
+    }
+  }
+
+  function waitForGeneratedAudio() {
+    if (!busy) return;
+    const audio = findNewAudio();
+    if (audio && audio.readyState >= 2) {
+      cleanupObserver();
+      setStatus("Playing sentence " + (sentenceQueue.length ? "before the next one" : "(final sentence)") + "…");
+      const onEnded = () => {
+        audio.removeEventListener("ended", onEnded);
+        finishCurrentSentence();
+      };
+      audio.addEventListener("ended", onEnded, { once: true });
+      if (!clickResultPlay(audio)) {
+        audio.removeEventListener("ended", onEnded);
+        finishCurrentSentence("Sentence generated. Press Play on the result player to continue.");
+      } else {
+        // If the site button starts playback, the audio element's ended event advances the queue.
+        window.setTimeout(() => {
+          if (busy && audio.paused && audio.readyState >= 2) {
+            setStatus("Sentence is ready. If it did not play, click Play on the result player; the next sentence will wait.");
+          }
+        }, 1200);
+      }
+      return;
+    }
+    if (Date.now() - generationStartedAt > 120000) {
+      cleanupObserver();
+      busy = false;
+      setStatus("Timed out waiting for generated audio. Check PocketWebTools, then click Play or try the next reply.");
+    }
+  }
+
+  function generateNextSentence() {
+    if (busy || !sentenceQueue.length) return;
     const field = findTextField();
-    if (!field) return;
-    const currentText = field.isContentEditable ? field.textContent : field.value;
-    if ((currentText || "").trim() !== queuedText) setFieldValue(field, queuedText);
+    if (!field) {
+      setStatus("Waiting for the PocketWebTools text box to appear…");
+      return;
+    }
     const consent = findConsentCheckbox();
     if (!isChecked(consent)) {
-      setStatus("Reply is ready in PocketWebTools. Select the voice-permission checkbox to allow automatic generation.");
+      setStatus("Reply queued sentence by sentence. Check the voice-permission checkbox to continue.");
       return;
     }
     const button = findGenerateButton();
     if (!button || button.disabled) {
-      setStatus("Reply inserted. Choose a reference voice on PocketWebTools, then generation can continue.");
+      setStatus("Choose a reference voice and make sure PocketWebTools is ready to generate speech.");
       return;
     }
+    currentSentence = sentenceQueue.shift();
+    setFieldValue(field, currentSentence);
+    oldAudioSources = audioSources();
+    generationStartedAt = Date.now();
     busy = true;
-    setStatus("Generating speech with your selected reference voice…");
+    setStatus("Pasting sentence and generating cloned speech (" + (sentenceQueue.length + 1) + " sentence(s) remaining)…");
     button.click();
-    // Watch for the generated player and try to play it. Browser autoplay policy may still require a click.
-    const startedAt = Date.now();
-    const playWhenReady = () => {
-      const audio = [...document.querySelectorAll("audio")].find(visible);
-      if (audio && audio.readyState >= 2) {
-        audio.play().then(() => setStatus("Cloned speech generated and playing."))
-          .catch(() => setStatus("Cloned speech generated. Press Play on the audio player if it did not start."));
-        if (observer) observer.disconnect();
-        observer = null;
-        busy = false;
-        queuedText = "";
-        return;
-      }
-      if (Date.now() - startedAt > 120000) {
-        if (observer) observer.disconnect();
-        observer = null;
-        busy = false;
-        setStatus("Generation may need attention in the PocketWebTools tab.");
-      }
-    };
-    observer = new MutationObserver(playWhenReady);
-    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
-    window.setTimeout(playWhenReady, 1000);
+    generationObserver = new MutationObserver(waitForGeneratedAudio);
+    generationObserver.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+    window.setTimeout(waitForGeneratedAudio, 700);
+  }
+
+  function queueReply(text) {
+    const sentences = splitSentences(String(text || "").trim()).join(" ").length
+      ? splitSentences(String(text || "").trim())
+      : [String(text || "").trim()];
+    if (!sentences.filter(Boolean).length) {
+      setStatus("No assistant text to generate.");
+      return;
+    }
+    sentenceQueue = sentences.map((sentence) => sentence.slice(0, MAX_TEXT)).filter(Boolean);
+    currentSentence = "";
+    setStatus("Queued " + sentenceQueue.length + " sentence(s) for sequential cloned speech.");
+    generateNextSentence();
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type !== "POCKET_CLONE_TEXT" || typeof message.text !== "string") return;
-    queuedText = message.text.trim().slice(0, MAX_TEXT);
-    if (!queuedText) {
-      sendResponse({ ok: false, message: "No assistant text to generate." });
+    if (busy) {
+      sendResponse({ ok: false, message: "A sentence is currently generating; please wait for the current reply to finish." });
       return;
     }
-    attemptGenerate();
-    sendResponse({ ok: true, message: "Assistant reply sent to PocketWebTools." });
+    queueReply(message.text.slice(0, MAX_TEXT));
+    sendResponse({ ok: true, message: "Reply queued sentence by sentence for cloned speech." });
   });
 
-  // If the extension opened this page with a queued response, wait for the UI to hydrate.
   chrome.storage.local.get(["pendingCloneText"], (values) => {
     if (values.pendingCloneText) {
-      queuedText = String(values.pendingCloneText).trim().slice(0, MAX_TEXT);
+      const pending = String(values.pendingCloneText).trim().slice(0, MAX_TEXT);
       chrome.storage.local.remove("pendingCloneText");
       let attempts = 0;
       const timer = window.setInterval(() => {
         attempts++;
-        attemptGenerate();
-        if (!queuedText || attempts >= 40) window.clearInterval(timer);
+        if (!busy && findTextField()) {
+          queueReply(pending);
+          window.clearInterval(timer);
+        } else if (attempts >= 40) {
+          window.clearInterval(timer);
+          setStatus("A reply is queued, but the PocketWebTools text box did not become ready. Reload the page and try again.");
+        }
       }, 500);
     }
   });
 
-  // If the user checks the consent box after the reply was queued, continue automatically.
   document.addEventListener("change", (event) => {
-    if (event.target && (event.target.matches("input[type='checkbox'], [role='checkbox']"))) {
-      window.setTimeout(attemptGenerate, 100);
+    if (event.target && event.target.matches("input[type='checkbox'], [role='checkbox']")) {
+      window.setTimeout(generateNextSentence, 150);
     }
   }, true);
-  const pageObserver = new MutationObserver(() => { if (queuedText && !busy) attemptGenerate(); });
+
+  pageObserver = new MutationObserver(() => {
+    if (sentenceQueue.length && !busy) generateNextSentence();
+  });
   pageObserver.observe(document.documentElement, { childList: true, subtree: true });
 })();

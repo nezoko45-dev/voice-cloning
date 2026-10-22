@@ -8,6 +8,8 @@ const KOKORO_MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX";
 const KOKORO_VOICES = new Set(["af_heart", "af_bella", "af_nicole", "af_sarah", "af_sky", "am_adam", "am_michael", "bf_emma", "bf_isabella", "bm_george", "bm_lewis"]);
 let kokoroPipelinePromise = null;
 let kokoroPipeline = null;
+let whisperPipelinePromise = null;
+let whisperPipeline = null;
 
 const BRIDGE_HOST = "127.0.0.1";
 const BRIDGE_PORT = 47831;
@@ -170,6 +172,47 @@ async function getKokoroPipeline() {
     throw error;
   }
 }
+async function transcribeSpeech(samples) {
+  if (!(samples instanceof Float32Array) || samples.length < 1600) throw new Error("No clear speech was captured. Please try again.");
+  if (samples.length > 16000 * 180) throw new Error("Recording is longer than 3 minutes. Please record a shorter segment.");
+  if (whisperPipeline) return runWhisper(samples);
+  if (!whisperPipelinePromise) {
+    whisperPipelinePromise = (async () => {
+      const modelCache = path.join(app.getPath("userData"), "speech-model-cache");
+      await fs.mkdir(modelCache, { recursive: true });
+      const transformers = await import("@huggingface/transformers");
+      transformers.env.cacheDir = modelCache;
+      transformers.env.allowRemoteModels = true;
+      transformers.env.useBrowserCache = false;
+      sendProgress("Preparing offline speech recognition. The first run downloads a local Whisper model.");
+      const transcriber = await transformers.pipeline(
+        "automatic-speech-recognition",
+        "onnx-community/whisper-tiny.en",
+        { dtype: "q8", device: "cpu", progress_callback: event => {
+          if (event && event.status === "progress" && Number.isFinite(event.progress)) {
+            sendProgress("Downloading speech recognition model: " + Math.round(event.progress) + "%");
+          }
+        } }
+      );
+      whisperPipeline = transcriber;
+      return transcriber;
+    })();
+  }
+  try {
+    await whisperPipelinePromise;
+    return await runWhisper(samples);
+  } catch (error) {
+    whisperPipelinePromise = null;
+    throw error;
+  }
+}
+async function runWhisper(samples) {
+  sendProgress("Transcribing your recording locally…");
+  const result = await whisperPipeline(samples, { chunk_length_s: 30, stride_length_s: 5 });
+  const text = result && typeof result.text === "string" ? result.text.trim() : "";
+  if (!text) throw new Error("No speech was recognized. Try speaking closer to the microphone.");
+  return text;
+}
 function writePcmWav(samples, sampleRate, outputPath) {
   const dataBytes = samples.length * 2;
   const wav = Buffer.alloc(44 + dataBytes);
@@ -196,6 +239,10 @@ app.whenReady().then(async () => {
   await startBridge();
   ipcMain.handle("bridge:get-info", () => ({ host: BRIDGE_HOST, port: BRIDGE_PORT, token: bridgeToken }));
   ipcMain.handle("bridge:copy-token", () => { clipboard.writeText(bridgeToken); return true; });
+  ipcMain.handle("speech:transcribe", async (_event, request) => {
+    if (!request || !(request.samples instanceof Float32Array)) throw new Error("Invalid audio recording.");
+    return { text: await transcribeSpeech(request.samples) };
+  });
   ipcMain.handle("audio:choose-reference", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Choose a voice recording", properties: ["openFile"],

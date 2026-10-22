@@ -129,7 +129,11 @@
     currentSentence = "";
     if (message) setStatus(message);
     if (sentenceQueue.length) {
-      window.setTimeout(generateNextSentence, 500);
+      if (document.hidden) {
+        setStatus("Sentence finished. " + sentenceQueue.length + " sentence(s) remain queued; return to the PocketWebTools tab to continue local generation.");
+      } else {
+        window.setTimeout(generateNextSentence, 500);
+      }
     } else {
       setStatus("All sentences in this reply have been generated and played.");
     }
@@ -170,6 +174,12 @@
 
   function generateNextSentence() {
     if (busy || !sentenceQueue.length) return;
+    // Do not start a new local WebGPU inference in a hidden tab. Chrome may
+    // throttle it unpredictably; keep the queue intact and resume on visibility/focus.
+    if (document.hidden) {
+      setStatus("Reply is queued for local voice generation. Return to the PocketWebTools tab to continue; hidden-tab inference is not reliable in Chrome.");
+      return;
+    }
     const field = findTextField();
     if (!field) {
       setStatus("Waiting for the PocketWebTools text box to appear…");
@@ -240,6 +250,15 @@
     }
   });
 
+  function resumeWhenVisible() {
+    if (document.hidden) return;
+    if (busy) {
+      waitForGeneratedAudio();
+    } else if (sentenceQueue.length) {
+      generateNextSentence();
+    }
+  }
+
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       hiddenAt = Date.now();
@@ -250,13 +269,11 @@
       if (busy) generationStartedAt += Date.now() - hiddenAt;
       hiddenAt = 0;
     }
-    if (busy) {
-      waitForGeneratedAudio();
-      setStatus("PocketWebTools is active again; checking generated audio and resuming the queue.");
-    } else if (sentenceQueue.length) {
-      generateNextSentence();
-    }
+    resumeWhenVisible();
+    if (busy) setStatus("PocketWebTools is active again; checking generated audio and resuming the queue.");
   });
+  window.addEventListener("focus", resumeWhenVisible);
+  window.addEventListener("pageshow", resumeWhenVisible);
 
   document.addEventListener("change", (event) => {
     if (event.target && event.target.matches("input[type='checkbox'], [role='checkbox']")) {

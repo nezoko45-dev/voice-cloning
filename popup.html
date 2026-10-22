@@ -34,13 +34,13 @@
 
     <section class="chat-panel" aria-label="Conversation">
       <div id="messages" class="messages" aria-live="polite">
-        <div class="welcome"><div class="wave">〰</div><h2>Ready when you are.</h2><p>Type a message or start continuous listening.</p></div>
+        <div class="welcome"><div class="wave">〰</div><h2>Ready when you are.</h2><p>Type a message or start background listening.</p></div>
       </div>
       <p id="status" class="status" role="status">Add your OpenRouter key in settings to get started.</p>
       <form id="chatForm" class="composer">
         <textarea id="userInput" rows="2" placeholder="Ask me anything…" aria-label="Message" required></textarea>
         <div class="composer-actions">
-          <button id="micButton" class="secondary" type="button" title="Toggle continuous microphone listening">🎙 Talk</button>
+          <button id="micButton" class="secondary" type="button" title="Start or stop background microphone listening">🎙 Talk</button>
           <span class="spacer"></span>
           <button id="clearButton" class="text-button" type="button">Clear</button>
           <button id="sendButton" class="primary" type="submit">Send ↗</button>

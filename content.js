@@ -92,7 +92,7 @@
     const localButtons = [...(scope || document).querySelectorAll("button, [role='button']")].filter(visible);
     const allButtons = [...document.querySelectorAll("button, [role='button']")].filter(visible);
     const isPlay = (button) => !button.disabled &&
-      /(^|\\b)(play|play audio|play voice)(\\b|$)|▶/.test(label(button)) &&
+      /(^|\b)(play|play audio|play voice)(\b|$)|▶/.test(label(button)) &&
       !/generate speech|preview|playground/i.test(label(button));
     const candidates = [...localButtons.filter(isPlay), ...allButtons.filter(isPlay)];
     const playButton = candidates.find((button) => !button.getAttribute("aria-pressed") || button.getAttribute("aria-pressed") !== "true");

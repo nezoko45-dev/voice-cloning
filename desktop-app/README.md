@@ -38,6 +38,40 @@ npm run dist:win
 
 The installer is written to `release/Voice-Studio-Setup-0.2.0.exe`.
 
+
+## Chrome extension bridge
+
+The existing Chrome extension's current chat, microphone, and local TTS behavior is preserved. The popup adds a **To Studio** button that sends the text currently in its message box to the open Electron app. The desktop app fills the text editor so you can review it; the bridge never starts speech generation automatically.
+
+### One-time setup
+
+1. Start Voice Studio and keep its window open. The bridge listens only on `127.0.0.1:47831`; it is not exposed to your LAN and shuts down when the app exits.
+2. In Voice Studio, find **Chrome extension bridge** and click **Copy token**.
+3. Open the Chrome extension popup, click Settings, paste the token into **Voice Studio bridge token**, and click **Save settings**.
+4. Click **Test connection**. Keep Voice Studio open when sending text.
+5. Type text in the extension message box and click **To Studio**. The text should appear in Voice Studio's editor. Review it and click **Generate speech** when ready.
+
+The bridge token is saved in the app's user-data directory and persists across launches. Store it like a password; anyone who has it and can make requests from a Chrome extension context on this PC can submit text to the open app. You can clear/regenerate it by closing Voice Studio and deleting `bridge-token.txt` from the app's user-data directory before restarting.
+
+### Bridge security and behavior
+
+- The HTTP server binds explicitly to `127.0.0.1`, never `0.0.0.0`.
+- Requests must use a Chrome extension origin, include the per-install bearer token, and contain JSON with a non-empty `text` string of at most 12,000 characters.
+- Request bodies are size-limited; unsupported methods/content types and invalid payloads are rejected.
+- The extension uses a fixed localhost URL, not a user-configurable remote host.
+- No text is sent to a cloud service by this bridge. It only transfers text between the extension and Voice Studio on the same computer.
+- Voice Studio must be running and its window open. If it is closed, the extension cannot deliver text.
+- The bridge is an additional feature; the extension's existing OpenRouter chat behavior remains unchanged.
+
+### Bridge smoke tests
+
+1. With Voice Studio open, save the token in extension settings and use **Test connection**.
+2. Send a short text with **To Studio**; confirm it fills the editor and does not trigger generation.
+3. Send empty text and more than 12,000 characters; confirm the extension reports a useful validation error.
+4. Enter an incorrect token; confirm the request is rejected.
+5. Close Voice Studio and retry; confirm the extension reports that the bridge is unavailable.
+6. Confirm the desktop server binds only to loopback (127.0.0.1) and cannot be reached from another device on the LAN.
+
 ## First launch
 
 The first generation requires an internet connection to download the official native runtime and Pocket TTS model. After the model has been cached, speech generation can run offline. If the model is not already cached and the computer is offline, generation will fail with a download error.

@@ -1,7 +1,7 @@
 const voiceSelect=document.getElementById("voiceSelect"),textInput=document.getElementById("textInput"),charCount=document.getElementById("charCount"),generateButton=document.getElementById("generateButton"),statusTitle=document.getElementById("statusTitle"),statusMessage=document.getElementById("statusMessage"),resultPanel=document.getElementById("resultPanel"),resultStatus=document.getElementById("resultStatus"),audioPlayer=document.getElementById("audioPlayer"),saveButton=document.getElementById("saveButton");
 const bridgeToken=document.getElementById("bridgeToken"),bridgeStatus=document.getElementById("bridgeStatus"),copyBridgeToken=document.getElementById("copyBridgeToken");
 const chooseOutputButton=document.getElementById("chooseOutputButton"),outputPathLabel=document.getElementById("outputPathLabel");
-const startListeningButton=document.getElementById("startListeningButton"),stopListeningButton=document.getElementById("stopListeningButton"),silenceSelect=document.getElementById("silenceSelect"),autoGenerateCheckbox=document.getElementById("autoGenerateCheckbox");
+const startListeningButton=document.getElementById("startListeningButton"),stopListeningButton=document.getElementById("stopListeningButton"),silenceSelect=document.getElementById("silenceSelect"),autoGenerateCheckbox=document.getElementById("autoGenerateCheckbox"),repeatListeningCheckbox=document.getElementById("repeatListeningCheckbox");
 let mediaStream=null,mediaRecorder=null,recordingChunks=[],audioContext=null,analyserFrame=0,lastVoiceAt=0,heardVoice=false,stopRequested=false;
 let generatedPath=null;
 let selectedOutputPath=null;
@@ -137,6 +137,10 @@ generateButton.addEventListener("click",async()=>{
   }finally{
     generateButton.disabled=false;
     generateButton.innerHTML="▶ &nbsp; Generate speech";
+    if(autoGenerateCheckbox.checked&&repeatListeningCheckbox.checked){
+      setStatus("Ready for next phrase","Speech is generated. Restarting the microphone so you can speak the next phrase.");
+      setTimeout(()=>startListeningButton.click(),500);
+    }
   }
 });
 chooseOutputButton.addEventListener("click",async()=>{

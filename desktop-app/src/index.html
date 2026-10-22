@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; media-src 'self' file: blob:">
+<title>Voice Studio</title><link rel="stylesheet" href="styles.css"></head>
+<body><main class="shell">
+<header class="topbar"><div class="brand-mark">V</div><div><p class="eyebrow">LOCAL VOICE WORKSHOP</p><h1>Voice Studio</h1></div><div class="privacy"><span class="dot"></span>Private by design</div></header>
+<section class="intro"><p class="eyebrow">YOUR VOICE, YOUR DEVICE</p><h2>Give your words a voice.</h2><p>Choose a reference recording, enter your text, and create speech locally.</p></section>
+<section class="panel"><div class="section-heading"><div><span class="step">01</span><h3>Reference voice</h3></div><span class="subtle">A clear 10–30 second sample works well</span></div>
+<button id="chooseVoice" class="upload-zone" type="button"><span class="upload-icon">↥</span><span class="upload-copy"><strong id="voiceName">Choose an audio file</strong><small id="voiceMeta">WAV, MP3, M4A, FLAC, OGG and more</small></span><span class="browse">Browse files</span></button><p class="hint">Use your own voice or a recording you have permission to clone.</p></section>
+<section class="panel"><div class="section-heading"><div><span class="step">02</span><h3>Text to speak</h3></div><span id="charCount" class="subtle">0 characters</span></div>
+<textarea id="textInput" placeholder="Type or paste the text you want to hear in your reference voice…" spellcheck="true"></textarea>
+<div class="text-footer"><span class="hint">Long text may take longer to generate.</span><button id="generateButton" class="primary" type="button">▶ &nbsp; Generate speech</button></div></section>
+<section id="resultPanel" class="panel" hidden><div class="section-heading"><div><span class="step">03</span><h3>Your generated speech</h3></div><span id="resultStatus" class="subtle">Ready</span></div><audio id="audioPlayer" controls></audio><button id="saveButton" class="secondary" type="button">Save WAV</button></section>
+<section class="status-card" aria-live="polite"><span class="status-icon">i</span><div><strong id="statusTitle">Local engine setup</strong><p id="statusMessage">Checking whether the speech engine is installed…</p></div></section>
+<footer><span>Audio processing is intended to stay on this PC.</span><span>Model downloads require internet once.</span></footer></main><script src="renderer.js"></script></body></html>

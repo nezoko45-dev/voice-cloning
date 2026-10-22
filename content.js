@@ -79,17 +79,37 @@
   }
 
   function clickResultPlay(audio) {
-    // Prefer the result player's own Play button when present.
-    const scope = audio?.closest("section, article, [class*='result'], [class*='audio'], [class*='player']") || audio?.parentElement?.parentElement;
-    const buttons = [...(scope || document).querySelectorAll("button, [role='button']")].filter(visible);
-    const playButton = buttons.find((button) => /^(play|play audio|▶|▶ play)$/i.test(normalized(button.innerText || button.getAttribute("aria-label") || button.title)));
-    if (playButton && !playButton.disabled) {
+    // PocketWebTools may render the result controls outside the audio element's
+    // immediate parent. Search locally first, then the visible result controls.
+    const label = (button) => normalized([
+      button.innerText,
+      button.getAttribute("aria-label"),
+      button.getAttribute("title"),
+      button.getAttribute("data-testid")
+    ].filter(Boolean).join(" "));
+    const scope = audio?.closest("section, article, [class*='result'], [class*='audio'], [class*='player']") ||
+      audio?.parentElement?.parentElement;
+    const localButtons = [...(scope || document).querySelectorAll("button, [role='button']")].filter(visible);
+    const allButtons = [...document.querySelectorAll("button, [role='button']")].filter(visible);
+    const isPlay = (button) => !button.disabled &&
+      /(^|\\b)(play|play audio|play voice)(\\b|$)|▶/.test(label(button)) &&
+      !/generate speech|preview|playground/i.test(label(button));
+    const candidates = [...localButtons.filter(isPlay), ...allButtons.filter(isPlay)];
+    const playButton = candidates.find((button) => !button.getAttribute("aria-pressed") || button.getAttribute("aria-pressed") !== "true");
+    if (playButton) {
       playButton.click();
       return true;
     }
     if (audio) {
-      audio.play().catch(() => setStatus("Sentence generated. Click Play on the result player if Chrome blocks automatic playback."));
-      return true;
+      try {
+        const promise = audio.play();
+        if (promise && typeof promise.catch === "function") {
+          promise.catch(() => setStatus("Playback was blocked. Click Play under the generated result to continue."));
+        }
+        return true;
+      } catch (_) {
+        setStatus("Playback was blocked. Click Play under the generated result to continue.");
+      }
     }
     return false;
   }

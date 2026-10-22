@@ -9,6 +9,7 @@ A Manifest V3 Chrome extension that pairs an OpenRouter chat assistant with auto
 - Automatically send each assistant reply to an open PocketWebTools voice-cloning tab.
 - Fill the voice-cloning text field, then trigger generation when the page's permission checkbox is checked.
 - Attempt to play generated audio automatically; browser autoplay policies may require pressing Play.
+- Detect when PocketWebTools is backgrounded and retry generation checks when you return; Chrome may still throttle or pause hidden-tab inference.
 - Optional browser-native speech as a fallback.
 
 ## Install locally
@@ -25,7 +26,7 @@ The first model load may download a large local model and take a while. PocketWe
 
 ## How the integration works
 
-There is no documented public API assumed by this project. Instead, the extension's content script communicates with the PocketWebTools page, fills its text field, and clicks **Generate speech** after the site's voice-permission checkbox is checked. The extension tries to play the resulting audio element, but browser autoplay policy or future changes to the site's UI may require manual interaction.
+There is no documented public API assumed by this project. Instead, the extension's content script communicates with the PocketWebTools page, fills its text field, and clicks **Generate speech** after the site's voice-permission checkbox is checked. The extension tries to play the resulting audio element, but browser autoplay policy or future changes to the site's UI may require manual interaction. Keep in mind that browser-based voice generation may pause or slow down when PocketWebTools is in a background tab. The extension now avoids timing out solely because the tab was hidden and rechecks when you return, but it cannot force the browser or the site's WebGPU workload to keep running in the background.
 
 Keep the PocketWebTools tab open while chatting. If the page layout changes, automatic field detection may need updating. The voice sample is selected on PocketWebTools itself; the extension does not upload or store it.
 

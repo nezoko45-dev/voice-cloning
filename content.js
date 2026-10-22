@@ -6,6 +6,7 @@
   let generationObserver = null;
   let pageObserver = null;
   let generationStartedAt = 0;
+  let hiddenAt = document.hidden ? Date.now() : 0;
   let oldAudioSources = new Set();
   let oldAudioElements = new Set();
 
@@ -158,7 +159,9 @@
       }
       return;
     }
-    if (Date.now() - generationStartedAt > 120000) {
+    // Hidden tabs can be throttled or WebGPU inference can pause. Do not time out
+    // the generation while the user is away; the visibility handler retries on return.
+    if (!document.hidden && Date.now() - generationStartedAt > 120000) {
       cleanupObserver();
       busy = false;
       setStatus("Timed out waiting for generated audio. Check PocketWebTools, then click Play or try the next reply.");
@@ -234,6 +237,24 @@
           setStatus("A reply is queued, but the PocketWebTools text box did not become ready. Reload the page and try again.");
         }
       }, 500);
+    }
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      hiddenAt = Date.now();
+      if (busy) setStatus("PocketWebTools is in a background tab. Browser throttling may pause voice generation; return to this tab to resume.");
+      return;
+    }
+    if (hiddenAt) {
+      if (busy) generationStartedAt += Date.now() - hiddenAt;
+      hiddenAt = 0;
+    }
+    if (busy) {
+      waitForGeneratedAudio();
+      setStatus("PocketWebTools is active again; checking generated audio and resuming the queue.");
+    } else if (sentenceQueue.length) {
+      generateNextSentence();
     }
   });
 

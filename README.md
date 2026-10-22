@@ -5,7 +5,7 @@ A Manifest V3 Chrome extension that pairs an OpenRouter chat assistant with auto
 ## Features
 
 - Chat with an OpenRouter model; configure the API key, model slug, and system prompt.
-- Dictate prompts using the browser's Web Speech API where supported.
+- Keep microphone speech recognition running in an extension offscreen document after the popup is closed (Chrome support and permissions required).
 - Automatically send each assistant reply to an open PocketWebTools voice-cloning tab.
 - Fill the voice-cloning text field, then trigger generation when the page's permission checkbox is checked.
 - Attempt to play generated audio automatically; browser autoplay policies may require pressing Play.
@@ -19,7 +19,7 @@ A Manifest V3 Chrome extension that pairs an OpenRouter chat assistant with auto
 4. Open VoiceAgent Pocket, open settings, enter your OpenRouter API key, and save.
 5. Click **Open voice setup**. On PocketWebTools, record or upload a clean 6–10 second reference sample of your own voice (or a voice you have explicit permission to clone).
 6. Confirm the site's permission checkbox. Keep the PocketWebTools voice-cloning tab open.
-7. Return to the extension and chat. Replies are sent to the open tab automatically.
+7. Open the extension once and click **Talk** to grant microphone permission and start background listening. You can then close the popup; recognized speech is sent to the assistant and replies are sent to PocketWebTools automatically. Click **Stop listening** from the popup to stop it.
 
 The first model load may download a large local model and take a while. PocketWebTools reports that it processes the reference voice, text, and generated audio locally in the browser.
 
@@ -44,7 +44,9 @@ The default model is `openai/gpt-4o-mini`. Use a model slug available to your Op
 ## Files
 
 - `manifest.json` — permissions and extension configuration
-- `popup.html`, `popup.css`, `popup.js` — assistant interface and chat workflow
+- `popup.html`, `popup.css`, `popup.js` — assistant interface and listening controls
+- `background.js` — offscreen document lifecycle, OpenRouter requests, and background conversation routing
+- `offscreen.html`, `offscreen.js` — background speech recognition
 - `content.js` — integration with the open PocketWebTools voice-cloning page
 
 ## License

@@ -63,6 +63,10 @@ The bridge token is saved in the app's user-data directory and persists across l
 - Voice Studio must be running and its window open. If it is closed, the extension cannot deliver text.
 - The bridge is an additional feature; the extension's existing OpenRouter chat behavior remains unchanged.
 
+### Troubleshooting: FFmpeg `ENOENT` after installation
+
+If generation fails with a path ending in `resources\\app.asar\\node_modules\\ffmpeg-static\\ffmpeg.exe`, you are running a build that tries to launch FFmpeg from inside the ASAR archive. Install a newer build that unpacks `node_modules/ffmpeg-static/**` and resolves the executable from `resources\\app.asar.unpacked\\node_modules\\ffmpeg-static\\ffmpeg.exe`. Rebuild the Windows installer after changing packaging configuration; restarting the same old installer does not repair missing packaged files.
+
 ### Bridge smoke tests
 
 1. With Voice Studio open, save the token in extension settings and use **Test connection**.

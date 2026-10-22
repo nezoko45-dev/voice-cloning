@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("voiceStudio", {
   chooseReference: () => ipcRenderer.invoke("audio:choose-reference"),
-  chooseOutput: () => ipcRenderer.invoke("audio:choose-output"),
+  chooseOutput: currentPath => ipcRenderer.invoke("audio:choose-output", currentPath),
   showOutput: outputPath => ipcRenderer.invoke("audio:show-output", outputPath),
   getEngineStatus: () => ipcRenderer.invoke("app:engine-status"),
   getBridgeInfo: () => ipcRenderer.invoke("bridge:get-info"),

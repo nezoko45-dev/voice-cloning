@@ -16,6 +16,7 @@
 <p class="hint voice-input-description">Use your microphone. After you finish speaking and silence is detected, Voice Studio transcribes locally and can automatically generate speech.</p>
 <div class="voice-controls"><button id="startListeningButton" class="primary" type="button">🎙 Start listening</button><button id="stopListeningButton" class="secondary" type="button" disabled>Stop recording</button><label class="silence-setting" for="silenceSelect">Stop after silence<select id="silenceSelect" class="voice-select"><option value="1" selected>1 second</option><option value="2">2 seconds</option><option value="3">3 seconds</option></select></label></div>
 <label class="auto-generate-option"><input id="autoGenerateCheckbox" type="checkbox" checked> Automatically click Generate speech when transcription finishes</label>
+<label class="auto-generate-option"><input id="repeatListeningCheckbox" type="checkbox" checked> Repeat the process: listen again after each generated clip</label>
 <p class="hint">First use downloads a small Whisper speech-recognition model. Recordings are processed locally and are not uploaded.</p></section>
 <section class="panel"><div class="section-heading"><div><span class="step">04</span><h3>Text to speak</h3></div><span id="charCount" class="subtle">0 characters</span></div>
 <textarea id="textInput" placeholder="Type or paste the exact text you want Kokoro to speak…" spellcheck="true"></textarea>

@@ -109,7 +109,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1120, height: 820, minWidth: 760, minHeight: 640,
     backgroundColor: "#111318", title: "Voice Studio",
-    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true }
+    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false }
   });
   mainWindow.loadFile(path.join(__dirname, "index.html"));
 }

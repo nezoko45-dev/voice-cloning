@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "VoiceAgent Pocket",
-  "version": "1.3.1",
-  "description": "A configurable AI voice assistant with guarded background speech recognition and PocketWebTools cloned-speech handoff.",
+  "version": "1.4.0",
+  "description": "OpenRouter voice assistant with local self-hosted text-to-speech and background audio playback.",
   "permissions": [
     "storage",
     "clipboardWrite",
@@ -11,18 +11,8 @@
   ],
   "host_permissions": [
     "https://openrouter.ai/*",
-    "https://pocketweb.tools/*"
-  ],
-  "content_scripts": [
-    {
-      "matches": [
-        "https://pocketweb.tools/voice-cloning*"
-      ],
-      "js": [
-        "content.js"
-      ],
-      "run_at": "document_idle"
-    }
+    "http://127.0.0.1/*",
+    "http://localhost/*"
   ],
   "action": {
     "default_title": "VoiceAgent Pocket",

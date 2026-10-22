@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("voiceStudio", {
   getBridgeInfo: () => ipcRenderer.invoke("bridge:get-info"),
   copyBridgeToken: () => ipcRenderer.invoke("bridge:copy-token"),
   generate: request => ipcRenderer.invoke("tts:generate", request),
+  transcribe: samples => ipcRenderer.invoke("speech:transcribe", { samples }),
   onBridgeText: callback => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("bridge:text", listener);

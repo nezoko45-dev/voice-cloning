@@ -17,6 +17,7 @@ let latestAssistantReply = "";
 let busy = false;
 let recognition = null;
 let listening = false;
+let continuousListening = false;
 
 function setStatus(element, message, isError = false) {
   element.textContent = message;
@@ -152,35 +153,75 @@ async function sendMessage(rawText) {
     setStatus(els.status, "Request failed: " + (error.message || "Unknown error"), true);
   } finally {
     busy = false; els.sendButton.disabled = false; els.micButton.disabled = false;
+    if (continuousListening) window.setTimeout(beginRecognition, 350);
   }
 }
 
 function startListening() {
+  if (continuousListening) {
+    continuousListening = false;
+    if (recognition && listening) recognition.stop();
+    els.micButton.textContent = "🎙 Talk";
+    setStatus(els.status, "Continuous listening paused.");
+    return;
+  }
+  continuousListening = true;
+  beginRecognition();
+}
+
+function beginRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    setStatus(els.status, "Speech recognition is not supported here. Try Chrome or type your message.", true); return;
+    continuousListening = false;
+    setStatus(els.status, "Speech recognition is not supported here. Try Chrome or type your message.", true);
+    return;
   }
-  if (listening && recognition) { recognition.stop(); return; }
+  if (!continuousListening || listening || busy) return;
   recognition = new SpeechRecognition();
   recognition.lang = navigator.language || "en-US";
-  recognition.interimResults = true; recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.continuous = false;
   let finalTranscript = "";
-  recognition.onstart = () => { listening = true; els.micButton.textContent = "■ Stop"; setStatus(els.status, "Listening…"); };
+  let hadError = false;
+  recognition.onstart = () => {
+    listening = true;
+    els.micButton.textContent = "■ Stop listening";
+    setStatus(els.status, "Listening continuously… Speak naturally; click Stop listening to pause.");
+  };
   recognition.onresult = (event) => {
     let interim = "";
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const part = event.results[i][0].transcript;
-      if (event.results[i].isFinal) finalTranscript += part; else interim += part;
+      if (event.results[i].isFinal) finalTranscript += part;
+      else interim += part;
     }
     els.userInput.value = (finalTranscript + " " + interim).trim();
   };
-  recognition.onerror = (event) => setStatus(els.status, "Microphone error: " + event.error, true);
-  recognition.onend = () => {
-    listening = false; els.micButton.textContent = "🎙 Talk";
-    const text = finalTranscript.trim();
-    if (text) sendMessage(text); else if (!busy) setStatus(els.status, "Ready.");
+  recognition.onerror = (event) => {
+    hadError = true;
+    setStatus(els.status, "Microphone error: " + event.error, true);
+    if (["not-allowed", "service-not-allowed", "audio-capture"].includes(event.error)) continuousListening = false;
   };
-  try { recognition.start(); } catch (error) { setStatus(els.status, "Could not start microphone: " + error.message, true); }
+  recognition.onend = () => {
+    listening = false;
+    const text = finalTranscript.trim();
+    if (text && continuousListening) {
+      sendMessage(text);
+    } else if (continuousListening && !busy && !hadError) {
+      window.setTimeout(beginRecognition, 350);
+    } else if (!continuousListening) {
+      els.micButton.textContent = "🎙 Talk";
+      if (!hadError) setStatus(els.status, "Continuous listening paused.");
+    }
+  };
+  try {
+    recognition.start();
+  } catch (error) {
+    listening = false;
+    continuousListening = false;
+    els.micButton.textContent = "🎙 Talk";
+    setStatus(els.status, "Could not start microphone: " + error.message, true);
+  }
 }
 
 async function openCloningSetup() {

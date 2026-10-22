@@ -14,6 +14,7 @@ CLI reference: https://github.com/kyutai-labs/pocket-tts/blob/main/docs/CLI%20Co
 - Select a reference recording in common audio/video formats.
 - FFmpeg normalizes the chosen file to mono 24 kHz PCM WAV before voice conditioning.
 - Enter text and generate speech with Pocket TTS.
+- Generated speech is automatically converted to mono 24 kHz, 16-bit PCM WAV and saved as `Documents\\Voice Studio\\voice-studio-output.wav` (overwrites the previous output on each generation). No output-file picker is needed.
 - Preview the output WAV and open its location.
 - First run downloads the native engine; first synthesis downloads the model weights.
 - Engine and model cache live in the app's user-data directory. Subsequent generation is local; the app does not send text or reference audio to a cloud service.

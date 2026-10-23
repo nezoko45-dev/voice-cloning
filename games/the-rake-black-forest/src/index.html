@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: blob:; connect-src 'self' file: data: blob:; media-src 'self' file: data: blob:">
+  <title>THE RAKE: BLACK FOREST</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../node_modules/three/build/three.module.js",
+        "three/addons/": "../node_modules/three/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main id="game"></main>
+  <div id="vignette"></div>
+  <section id="hud">
+    <div class="brand">BLACK FOREST <span>FIELD REPORT 01</span></div>
+    <div id="objective">OBJECTIVE <b>Find the ranger station</b></div>
+    <div id="status">FLASHLIGHT <b>F</b><span> · </span> SPRINT <b>SHIFT</b></div>
+    <div id="toast">THE FOREST IS TOO QUIET.</div>
+    <div id="asset-warning"></div>
+    <div id="intro">
+      <div class="eyebrow">NORTH WOODS · 02:13 AM</div>
+      <h1>THE RAKE<span>BLACK FOREST</span></h1>
+      <p>You lost the trail. Something else found you.</p>
+      <button id="start">ENTER THE FOREST</button>
+      <small>WASD MOVE · MOUSE LOOK · SHIFT SPRINT · F FLASHLIGHT · ESC RELEASE MOUSE</small>
+    </div>
+    <div id="bottom-hint">KEEP MOVING. DON'T FOLLOW THE WHISPERS.</div>
+  </section>
+  <script type="module" src="./game.js"></script>
+</body>
+</html>

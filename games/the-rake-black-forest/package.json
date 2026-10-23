@@ -29,7 +29,7 @@
     ],
     "win": {
       "target": ["nsis"],
-      "artifactName": "The-Rake-Black-Forest-Setup-\${version}.\${ext}"
+      "artifactName": "The-Rake-Black-Forest-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,

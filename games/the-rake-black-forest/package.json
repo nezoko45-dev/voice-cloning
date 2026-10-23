@@ -1,0 +1,40 @@
+{
+  "name": "the-rake-black-forest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Third-person survival horror prototype using Three.js and Electron",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win nsis",
+    "pack:win": "electron-builder --win dir"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.blackforest.rake",
+    "productName": "The Rake - Black Forest",
+    "asar": true,
+    "files": [
+      "main.cjs",
+      "src/**/*",
+      "assets/**/*",
+      "package.json",
+      "node_modules/three/**/*"
+    ],
+    "win": {
+      "target": ["nsis"],
+      "artifactName": "The-Rake-Black-Forest-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}

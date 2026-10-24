@@ -30,6 +30,31 @@
   function findButton(patterns) {
     return buttons().find(el => patterns.some(pattern => pattern.test(labelOf(el))));
   }
+
+  function findStopDictationButton() {
+    const all = buttons();
+    // ChatGPT has changed the dictation control's accessible name across UI versions.
+    // Check accessible labels/test IDs first, then visible text and common stop controls.
+    const exact = all.find(el => {
+      const labels = [
+        el.getAttribute("aria-label"), el.getAttribute("title"),
+        el.getAttribute("data-testid"), el.getAttribute("data-state"),
+        el.innerText, el.textContent
+      ].filter(Boolean).join(" ").replace(/\\s+/g, " ").trim().toLowerCase();
+      return /stop\\s*(dictation|recording|listening)|end\\s*dictation|finish\\s*dictation/.test(labels);
+    });
+    if (exact) return exact;
+
+    // Some ChatGPT layouts expose the stop action only through an icon or tooltip.
+    return all.find(el => {
+      const labels = [
+        el.getAttribute("aria-label"), el.getAttribute("title"),
+        el.getAttribute("data-testid"), el.querySelector("svg")?.getAttribute("data-testid"),
+        el.querySelector("svg")?.getAttribute("aria-label")
+      ].filter(Boolean).join(" ").toLowerCase();
+      return /stop.*dictat|dictat.*stop|stop-recording|stop_recording/.test(labels);
+    }) || null;
+  }
   function findComposer() {
     return document.querySelector("#prompt-textarea,[contenteditable='true'][data-testid*='prompt'],textarea");
   }
@@ -119,54 +144,74 @@
     let sawText = false;
     let prior = composerText();
     let lastTextChange = Date.now();
-    let began = Date.now();
+    const began = Date.now();
+    let silenceSince = 0;
+    let stopPressed = false;
+
     while (enabled) {
-      await sleep(150);
+      await sleep(120);
+      const now = Date.now();
       const current = composerText();
       if (current !== prior) {
         prior = current;
-        lastTextChange = Date.now();
+        lastTextChange = now;
         if (current) sawText = true;
       }
-      const stop = findButton([/stop dictation/, /stop recording/, /stop listening/]);
-      const audioQuiet = !speechActive && Date.now() - lastLoudAt >= silenceSeconds * 1000;
-      const transcriptSettled = Date.now() - lastTextChange >= Math.min(700, silenceSeconds * 500);
-      // Wait until actual mic silence is detected, then explicitly press Stop dictation.
-      if (sawText && audioQuiet && transcriptSettled && Date.now() - began > 900) {
+
+      const audioQuiet = !speechActive && now - lastLoudAt >= silenceSeconds * 1000;
+      if (!audioQuiet) silenceSince = 0;
+      else if (!silenceSince) silenceSince = now;
+
+      // Stop as soon as speech has ended and the transcript has had a moment to settle.
+      // Do not require a non-empty transcript before attempting the Stop dictation click.
+      const transcriptSettled = now - lastTextChange >= Math.min(900, silenceSeconds * 350);
+      const silenceLongEnough = silenceSince && now - silenceSince >= 250;
+      if (!stopPressed && silenceLongEnough && transcriptSettled && now - began > 700) {
+        let stop = findStopDictationButton();
+        // The stop control can be inserted a little after the audio becomes quiet.
+        for (let attempt = 0; !stop && attempt < 12; attempt++) {
+          await sleep(150);
+          stop = findStopDictationButton();
+        }
+
         if (stop) {
-          clickButton(stop);
-          showStatus('Speech ended. Pressed "Stop dictation".');
-          await sleep(650);
-        } else if (Date.now() - began < 8000) {
-          // Give ChatGPT a moment to show its Stop dictation control.
+          stopPressed = clickButton(stop);
+          if (stopPressed) {
+            showStatus('Speech ended — clicked "Stop dictation".');
+            await sleep(750);
+          }
+        } else if (now - began > 9000) {
+          showStatus('Could not find the Stop dictation control. Check ChatGPT’s dictation UI.');
+          return false;
+        } else {
+          // Keep waiting for ChatGPT to render its stop control; do not send while dictation is active.
           continue;
         }
+      }
+
+      // Only submit after Stop dictation was actually clicked. If ChatGPT has no visible stop
+      // control, leave the transcript intact rather than accidentally submitting live dictation.
+      if (stopPressed && (sawText || current)) {
+        if (now - lastTextChange < 500) continue;
+        await sleep(250);
         const send = findButton([/^send$/, /send message/]) ||
           document.querySelector('button[data-testid="send-button"]');
         if (send && clickButton(send)) {
-          showStatus("Sent. Waiting for ChatGPT's reply…");
+          showStatus("Dictation stopped and message sent. Waiting for ChatGPT's reply…");
           return true;
         }
-        await sleep(700);
-        const retrySend = findButton([/^send$/, /send message/]) ||
-          document.querySelector('button[data-testid="send-button"]');
-        if (retrySend && clickButton(retrySend)) {
-          showStatus("Sent. Waiting for ChatGPT's reply…");
-          return true;
-        }
-        showStatus("Stopped dictation, but Send was not found. Check the draft.");
+        showStatus('Dictation stopped, but Send was not found. Check the draft.');
         return false;
       }
-      // Fail-safe if the microphone meter is unavailable but text transcription settles.
-      if (sawText && Date.now() - lastTextChange > Math.max(5000, silenceSeconds * 2500) &&
-          Date.now() - began > 12000) {
-        const stopNow = findButton([/stop dictation/, /stop recording/, /stop listening/]);
-        if (stopNow) clickButton(stopNow);
-        await sleep(500);
-        const send = findButton([/^send$/, /send message/]) ||
-          document.querySelector('button[data-testid="send-button"]');
-        if (send && clickButton(send)) return true;
-        showStatus("Dictation may still be active. Please check the draft.");
+
+      // Safety timeout if no words were transcribed; never leave dictation running indefinitely.
+      if (now - began > 30000 && !stopPressed) {
+        const stop = findStopDictationButton();
+        if (stop && clickButton(stop)) {
+          showStatus('Stopped dictation after timeout. Check the draft before sending.');
+        } else {
+          showStatus('Dictation timeout: Stop dictation control was not found.');
+        }
         return false;
       }
     }

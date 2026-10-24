@@ -40,8 +40,8 @@
         el.getAttribute("aria-label"), el.getAttribute("title"),
         el.getAttribute("data-testid"), el.getAttribute("data-state"),
         el.innerText, el.textContent
-      ].filter(Boolean).join(" ").replace(/\\s+/g, " ").trim().toLowerCase();
-      return /stop\\s*(dictation|recording|listening)|end\\s*dictation|finish\\s*dictation/.test(labels);
+      ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim().toLowerCase();
+      return /stop\s*(dictation|recording|listening)|end\s*dictation|finish\s*dictation/.test(labels);
     });
     if (exact) return exact;
 
